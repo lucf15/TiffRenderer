@@ -1,0 +1,58 @@
+name: Trigger + poll a JitPack build
+description: >
+  Warms and verifies the JitPack build for a given tag. JitPack doesn't push artifacts anywhere
+  itself -- it builds on demand the first time someone requests a groupId/artifactId/tag, so
+  hitting that lookup URL right after a release is what warms the build so it's already cached,
+  and this fails loudly if that build errors instead of the first real consumer silently getting a
+  broken artifact. See jitpack.yml for the actual build steps JitPack runs.
+
+inputs:
+  tag:
+    description: The version tag to trigger and poll (e.g. v1.2.3)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Trigger + poll JitPack build
+      shell: bash
+      env:
+        # Derived from the repo itself rather than hardcoded -- our jitpack.yml only publishes
+        # one artifact (:lib:publishToMavenLocal), so JitPack hosts it at the root repo-level
+        # coordinate (com.github.<owner>:<repo>), not a per-module com.github.<owner>.<repo>:lib
+        # one. Confirmed empirically: a real build came back as
+        # com.github.lucf15:tiffrenderer-jptest-54889658:v0.0.1-test, not
+        # com.github.lucf15.tiffrenderer-jptest-54889658:lib:v0.0.1-test.
+        OWNER: ${{ github.repository_owner }}
+        REPO: ${{ github.event.repository.name }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        group_id="com.github.$OWNER"
+        artifact_id="$REPO"
+        pom_url="https://jitpack.io/com/github/$OWNER/$artifact_id/$TAG/$artifact_id-$TAG.pom"
+        status_url="https://jitpack.io/api/builds/$group_id/$artifact_id/$TAG"
+
+        # The status API is read-only and does NOT itself trigger a build -- only a real Maven
+        # artifact request (what Gradle actually does when resolving the dependency) does.
+        echo "Requesting $pom_url to trigger the build..."
+        curl -s -o /dev/null "$pom_url" || true
+
+        for i in $(seq 1 40); do
+          resp=$(curl -s "$status_url" || true)
+          echo "[$i/40] $resp"
+          # jq errors (non-JSON body, e.g. a plain-text "Repo not found") must not kill the
+          # script under bash -e -- treat any parse failure as "no status yet" and keep polling.
+          build_status=$(echo "$resp" | jq -r '.status // empty' 2>/dev/null) || build_status=""
+          if [ "$build_status" = "ok" ]; then
+            echo "JitPack build succeeded: https://jitpack.io/com/github/$OWNER/$artifact_id/$TAG/"
+            exit 0
+          elif [ -n "$build_status" ] && [ "$build_status" != "none" ] && [ "$build_status" != "Building" ] && [ "$build_status" != "tagNotFound" ]; then
+            echo "JitPack build failed with status '$build_status'."
+            echo "Log: https://jitpack.io/com/github/$OWNER/$artifact_id/$TAG/build.log"
+            exit 1
+          fi
+          sleep 30
+        done
+        echo "Timed out after 20 minutes waiting for JitPack. Check manually:"
+        echo "https://jitpack.io/com/github/$OWNER/$artifact_id/$TAG/build.log"
+        exit 1

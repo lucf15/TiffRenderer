@@ -1,0 +1,29 @@
+name: Set up Android build toolchain
+description: JDK + Android SDK + pinned NDK/CMake + Gradle, shared by every workflow that builds the native library.
+
+inputs:
+  java-version:
+    description: Temurin JDK version
+    default: "17"
+  ndk-version:
+    description: Pinned NDK version (must match lib/build.gradle.kts's ndkVersion)
+    default: "28.2.13676358"
+  cmake-version:
+    description: Pinned CMake version (must match lib/build.gradle.kts's externalNativeBuild.cmake.version)
+    default: "3.22.1"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - uses: android-actions/setup-android@v3
+
+    - name: Install pinned NDK + CMake
+      shell: bash
+      run: sdkmanager --install "ndk;${{ inputs.ndk-version }}" "cmake;${{ inputs.cmake-version }}"
+
+    - uses: gradle/actions/setup-gradle@v4

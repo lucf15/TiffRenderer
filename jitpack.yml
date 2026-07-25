@@ -1,0 +1,33 @@
+# JitPack build config — https://docs.jitpack.io/building/
+#
+# JitPack's pre-installed `sdkmanager` is an old build that crashes under JDK 17+ with
+# `NoClassDefFoundError: javax/xml/bind/annotation/XmlSchema` (JAXB was removed from the JDK in 9,
+# and that binary still calls into it). JitPack doesn't fail the build when a before_install
+# command errors, so this was failing *silently*: AGP's own auto-install covered NDK/build-tools/
+# platform during the Gradle build itself (it can fetch those on its own), but AGP does not
+# auto-install CMake, so the actual build died later with a confusing "CMake not found" error that
+# had nothing to do with the real cause. Fix: download a fresh cmdline-tools package with a modern
+# sdkmanager instead of using JitPack's broken one, and put it first on PATH.
+#
+# Also: this project's own CMakeLists.txt only requires CMake 3.22.1 (see cmake_minimum_required),
+# so that's what's installed here and in lib/build.gradle.kts's version pin, rather than a newer
+# release — a newer CMake's prebuilt binary needs a glibc version newer than JitPack's build
+# container ships, which fails with a "GLIBC_2.28 not found" error at configure time. 3.22.1 is old
+# enough to avoid that entirely.
+
+jdk:
+  - openjdk17
+
+before_install:
+  - git submodule update --init --recursive
+  - wget --quiet --output-document=/tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip
+  - unzip -q -d /tmp/cmdline-tools-tmp /tmp/cmdline-tools.zip
+  - mkdir -p "$ANDROID_HOME/cmdline-tools"
+  - rm -rf "$ANDROID_HOME/cmdline-tools/fresh"
+  - mv /tmp/cmdline-tools-tmp/cmdline-tools "$ANDROID_HOME/cmdline-tools/fresh"
+  - export PATH="$ANDROID_HOME/cmdline-tools/fresh/bin:$PATH"
+  - yes | sdkmanager --licenses > /dev/null 2>&1 || true
+  - sdkmanager --install "ndk;28.2.13676358" "cmake;3.22.1"
+
+install:
+  - ./gradlew :lib:publishToMavenLocal

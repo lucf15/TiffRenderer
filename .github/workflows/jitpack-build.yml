@@ -1,0 +1,36 @@
+name: JitPack build check
+
+# Fallback for a manually-pushed tag: ci.yml's semantic-release job already warms/verifies JitPack
+# automatically for tags it creates itself, via the same composite action this workflow uses.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to check (defaults to the pushed tag)"
+        required: false
+
+concurrency:
+  group: jitpack-build-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-jitpack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF_NAME}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/trigger-jitpack-build
+        with:
+          tag: ${{ steps.tag.outputs.tag }}

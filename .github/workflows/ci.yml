@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-android-toolchain
+
+      - name: Build library (all ABIs)
+        run: ./gradlew :lib:assembleDebug
+
+      - name: Build sample app
+        run: ./gradlew :sample:assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sample-debug-apk
+          path: sample/build/outputs/apk/debug/sample-debug.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lib-debug-aar
+          path: lib/build/outputs/aar/lib-debug.aar
+          if-no-files-found: error
+
+  # Only runs on a version tag push -- attaches the same build's sample APK to a GitHub Release
+  # instead of rebuilding from scratch, so a human has something to install directly without
+  # cloning/building. The library .aar is deliberately NOT attached here: a bare .aar has no POM/
+  # module metadata, so it can't be resolved as a normal Gradle dependency (only manually wired via
+  # a flatDir repo) -- strictly worse than the JitPack coordinate already documented in the README.
+  # Separate concern from jitpack-build.yml, which verifies that Maven artifact actually builds.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sample-debug-apk
+          path: release-assets
+
+      - name: Rename artifact to include the tag
+        run: mv release-assets/sample-debug.apk "release-assets/tiffrenderer-sample-${GITHUB_REF_NAME}.apk"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+
+  # Computes the next version from Conventional Commits since the last tag (see .releaserc.json)
+  # and cuts the release automatically. Uses the plain GITHUB_TOKEN deliberately, not a PAT: a
+  # GITHUB_TOKEN-created tag/release does not trigger other workflows (GitHub's own recursion
+  # prevention), which would normally mean the `release` job above and jitpack-build.yml silently
+  # never fire for an automated release. Rather than work around that with a PAT (semantic-release's
+  # own docs advise against it, and it's not even reliably fixed upstream -- see
+  # cycjimmy/semantic-release-action#128), this job does the follow-up itself instead of depending
+  # on a second workflow run.
+  semantic-release:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # semantic-release needs full tag history, not the default shallow clone
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - id: release
+        uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download sample APK
+        if: steps.release.outputs.new_release_published == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: sample-debug-apk
+          path: release-assets
+
+      - name: Attach sample APK to the new release
+        if: steps.release.outputs.new_release_published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mv release-assets/sample-debug.apk "release-assets/tiffrenderer-sample-v${{ steps.release.outputs.new_release_version }}.apk"
+          gh release upload "v${{ steps.release.outputs.new_release_version }}" release-assets/*.apk --repo ${{ github.repository }}
+
+      - name: Warm JitPack build for the new version
+        if: steps.release.outputs.new_release_published == 'true'
+        uses: ./.github/actions/trigger-jitpack-build
+        with:
+          tag: v${{ steps.release.outputs.new_release_version }}

@@ -1,0 +1,18 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# AOSP PdfRenderer reference sources — kept locally for study/comparison, not ours to
+# redistribute as part of this repo's history. See reference/aosp-pdfrenderer/README.md.
+/reference/
+
+# Working notes for continuing this project across sessions — not meant for library consumers.
+/CLAUDE.md
+/DEVLOG.md
