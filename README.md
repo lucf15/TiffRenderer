@@ -80,7 +80,7 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.lucf15.TiffRenderer:lib:<tag>") // see the badge above for the latest tag
+    implementation("com.github.lucf15:TiffRenderer:<tag>") // see the badge above for the latest tag
 }
 ```
 
