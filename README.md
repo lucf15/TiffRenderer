@@ -1,5 +1,7 @@
 # TiffRenderer
 
+[![](https://jitpack.io/v/lucf15/TiffRenderer.svg)](https://jitpack.io/#lucf15/TiffRenderer)
+
 An Android library for decoding and rasterizing TIFF files — including multi-page/multi-directory
 ones — on top of [libtiff](http://libtiff.org/), cross-compiled with the NDK behind a thin JNI
 layer.
