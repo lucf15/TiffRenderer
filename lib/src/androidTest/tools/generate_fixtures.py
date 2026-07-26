@@ -5,9 +5,10 @@ Run from anywhere: `python3 generate_fixtures.py [output_dir]` (defaults to
 lib/src/androidTest/assets/ relative to this file). Requires `tiffcp`/`tiffinfo` on PATH
 (Homebrew: `brew install libtiff`) for the codec-variant step; everything else is stdlib-only.
 
-Two fixtures this script does *not* produce -- unsupported_webp.tif and unsupported_lerc.tif --
-because `tiffcp` doesn't wire up `-c webp`/`-c lerc` at all (confirmed via its own `-h` text),
-regardless of what the underlying libtiff build supports. Those need a throwaway
+One fixture this script does *not* produce -- unsupported_lerc.tif -- because `tiffcp` doesn't
+wire up `-c lerc` at all (confirmed via its own `-h` text), regardless of what the underlying
+libtiff build supports. supported_webp.tif needs the same workaround for the same reason (`-c
+webp` isn't wired up either), just no longer unsupported. Both need a throwaway
 `tifffile`+`imagecodecs` venv instead:
 
     python3 -m venv /tmp/tiff_venv && /tmp/tiff_venv/bin/pip install tifffile imagecodecs
@@ -249,7 +250,7 @@ def main():
     os.remove(base_bilevel)
 
     print("wrote fixtures to", OUT_DIR)
-    print("still needed: unsupported_webp.tif, unsupported_lerc.tif -- see this file's docstring")
+    print("still needed: unsupported_lerc.tif -- see this file's docstring")
 
 
 if __name__ == "__main__":

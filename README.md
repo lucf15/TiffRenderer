@@ -3,8 +3,10 @@
 [![](https://jitpack.io/v/lucf15/TiffRenderer.svg)](https://jitpack.io/#lucf15/TiffRenderer)
 
 An Android library for decoding and rasterizing TIFF files, including multi-page/multi-directory
-ones, on top of [libtiff](http://libtiff.org/) 4.7.2 (JPEG-in-TIFF via vendored [IJG
-libjpeg](https://www.ijg.org/) 10), cross-compiled with the NDK behind a thin JNI layer.
+ones, on top of [libtiff](http://libtiff.org/) (JPEG-in-TIFF and WebP support via vendored
+[IJG libjpeg](https://www.ijg.org/) and [libwebp](https://github.com/webmproject/libwebp)),
+cross-compiled with the NDK behind a thin JNI layer. See [Native libraries](#native-libraries)
+below for exact pinned versions.
 
 Android ships a built-in renderer for PDF ([`PdfRenderer`][pdfrenderer-docs], backed by pdfium)
 but has no equivalent for TIFF. `TiffRenderer` fills that gap. Its public API is **deliberately
@@ -52,20 +54,30 @@ This is a young library, and codec support is intentionally narrow in this first
 | LZW                   | ✅        |                                            |
 | CCITT Group 3/4 (fax) | ✅        |                                            |
 | Deflate / ZIP         | ✅        | via the NDK's bundled zlib                |
-| JPEG-in-TIFF          | ✅        | via vendored IJG libjpeg 10               |
-| WebP                  | ❌        | would require vendoring libwebp           |
+| JPEG-in-TIFF          | ✅        | via vendored IJG libjpeg                  |
+| WebP                  | ✅        | via vendored libwebp                      |
 | Zstd                  | ❌        | would require vendoring libzstd           |
 | LERC                  | ❌        | would require vendoring LERC              |
 | LZMA                  | ❌        | would require vendoring liblzma           |
 | JBIG                  | ❌        | untested, no fixture available            |
 
-Native libraries are vendored as pinned git submodules:
-[libtiff](https://gitlab.com/libtiff/libtiff) 4.7.2 and
-[IJG libjpeg](https://github.com/libjpeg-turbo/ijg) 10.
-
 A TIFF using an unsupported codec opens fine (the compression tag is just metadata until
 something actually tries to decode pixels) but `Page#render()` throws `IOException` once decoding
 is actually attempted. It never silently misdecodes or crashes.
+
+## Native libraries
+
+Vendored as pinned git submodules under `lib/src/main/cpp/third_party/`:
+
+| Library                                              | Version |
+|-------------------------------------------------------|---------|
+| [libtiff](https://gitlab.com/libtiff/libtiff)          | 4.7.2   |
+| [IJG libjpeg](https://github.com/libjpeg-turbo/ijg)    | 10      |
+| [libwebp](https://github.com/webmproject/libwebp)      | 1.6.0   |
+
+libtiff and libwebp both bump automatically, including this table (see
+`.github/workflows/libtiff-update-check.yml` / `libwebp-update-check.yml`). libjpeg's release
+cadence is measured in years rather than months, so its version is bumped by hand instead.
 
 ## Installation
 
@@ -109,9 +121,9 @@ dependencies {
 
 Building the library requires the Android NDK and CMake (versions pinned in `lib/build.gradle.kts`
 via `ndkVersion` / `externalNativeBuild.cmake.version`); Gradle will fetch them automatically if
-they aren't already installed. libtiff and libjpeg are both vendored as git submodules, so clone
-with `--recurse-submodules` (or run `git submodule update --init --recursive` afterwards) before
-building.
+they aren't already installed. libtiff, libjpeg, and libwebp are all vendored as git submodules,
+so clone with `--recurse-submodules` (or run `git submodule update --init --recursive` afterwards)
+before building.
 
 ## Quick start
 

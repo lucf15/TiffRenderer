@@ -118,6 +118,11 @@ public class TiffRendererCodecTest {
         assertDecodesAllPages("supported_jpeg.tif", RGB_PAGE_COUNT);
     }
 
+    @Test
+    public void webp_decodesAllPages() throws IOException {
+        assertDecodesAllPages("supported_webp.tif", RGB_PAGE_COUNT);
+    }
+
     // --- Unsupported (codec disabled at build time -- see CMakeLists.txt) ---------------------
 
     @Test
@@ -128,11 +133,6 @@ public class TiffRendererCodecTest {
     @Test
     public void lzma_rejectedAtRenderNotOpen() throws IOException {
         assertRejectedAtRenderNotOpen("unsupported_lzma.tif");
-    }
-
-    @Test
-    public void webp_rejectedAtRenderNotOpen() throws IOException {
-        assertRejectedAtRenderNotOpen("unsupported_webp.tif");
     }
 
     @Test

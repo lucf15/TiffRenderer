@@ -1,0 +1,185 @@
+name: Native library update check
+
+# Reusable workflow: opens a PR bumping one vendored native-library submodule when a newer stable
+# release tag appears upstream. Called once per library (see libtiff-update-check.yml /
+# libwebp-update-check.yml) rather than duplicated per library -- the check/verify/pr/merge shape
+# below is identical for both, only the repo URL, submodule path, and README version string
+# differ, which is exactly what `inputs` parameterizes.
+#
+# Four jobs deliberately, not one: `check` is cheap and should fail fast on weeks with no release;
+# `verify` is the expensive build+emulator work and gets no write access (it never touches GitHub
+# state); `pr`/`merge` are the only jobs with contents/PR write access, kept least-privilege. A PR
+# opened here with the default GITHUB_TOKEN cannot itself trigger a separate pull_request-triggered
+# workflow (GitHub blocks that recursion), which is why verification has to happen as a job in
+# *this* workflow rather than a second one reacting to the PR.
+
+on:
+  workflow_call:
+    inputs:
+      library_name:
+        description: 'Submodule directory name under lib/src/main/cpp/third_party/, e.g. "libtiff"'
+        required: true
+        type: string
+      repo_url:
+        description: "Upstream repo URL, for the PR body text"
+        required: true
+        type: string
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Explicit read-only: the caller grants a ceiling wide enough for pr/merge below, so this
+    # needs its own narrower block rather than inheriting that ceiling by default.
+    permissions:
+      contents: read
+    outputs:
+      bump: ${{ steps.check.outputs.bump }}
+      new_tag: ${{ steps.check.outputs.new_tag }}
+      current_tag: ${{ steps.check.outputs.current_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check for a newer stable tag
+        id: check
+        run: |
+          cd "lib/src/main/cpp/third_party/${{ inputs.library_name }}"
+          git fetch --tags --quiet
+          current_tag=$(git describe --tags --exact-match 2>/dev/null || echo "")
+          latest_tag=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "current: ${current_tag:-<none>}, latest: $latest_tag"
+          if [ -n "$latest_tag" ] && [ "$current_tag" != "$latest_tag" ]; then
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+            echo "new_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+            echo "current_tag=$current_tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  verify:
+    needs: check
+    if: needs.check.outputs.bump == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Check out candidate version
+        run: |
+          cd "lib/src/main/cpp/third_party/${{ inputs.library_name }}"
+          git fetch --tags --quiet
+          git checkout "${{ needs.check.outputs.new_tag }}"
+
+      - uses: ./.github/actions/setup-android-toolchain
+
+      - name: Build library (all ABIs)
+        run: ./gradlew :lib:assembleDebug
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-34-google_apis-x86_64
+
+      - name: Create AVD snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run instrumented test suite
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew :lib:connectedDebugAndroidTest
+
+  pr:
+    needs: [check, verify]
+    # always() so this still runs even if verify failed above -- we want a PR opened either way,
+    # as a visible record; only the merge job is conditional on verify having actually succeeded.
+    if: always() && needs.check.outputs.bump == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check out candidate version
+        run: |
+          cd "lib/src/main/cpp/third_party/${{ inputs.library_name }}"
+          git fetch --tags --quiet
+          git checkout "${{ needs.check.outputs.new_tag }}"
+
+      - name: Update README version reference
+        # README.md's "Native libraries" table is the single place a pinned version is written
+        # out -- keep it in lockstep with the submodule bump itself, in the same commit, rather
+        # than letting docs silently drift out of sync with what auto-merges.
+        run: |
+          old_version="${{ needs.check.outputs.current_tag }}"
+          new_version="${{ needs.check.outputs.new_tag }}"
+          sed -i "s/${old_version#v}/${new_version#v}/g" README.md
+
+      - name: Open PR
+        id: pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(${{ inputs.library_name }}): bump submodule to ${{ needs.check.outputs.new_tag }}"
+          title: "chore(${{ inputs.library_name }}): bump submodule to ${{ needs.check.outputs.new_tag }}"
+          body: |
+            Upstream released `${{ needs.check.outputs.new_tag }}` on ${{ inputs.repo_url }}. This
+            bumps the pinned submodule commit to match, and updates the version reference in
+            README.md to stay in sync.
+
+            Build (all 4 ABIs) and the full instrumented suite (codec support matrix + corrupt-input
+            crash tests) already ran against this exact change before this PR was opened.
+            ${{ needs.verify.result == 'success' && 'They passed, so this auto-merges.' || '**They FAILED** -- this needs manual investigation before merging.' }}
+          branch: bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
+          base: main
+          labels: dependencies
+
+  merge:
+    needs: [check, verify, pr]
+    if: needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Auto-merge PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: gh pr merge "${{ needs.pr.outputs.pull-request-number }}" --repo "$REPO" --squash --delete-branch

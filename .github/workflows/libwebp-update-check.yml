@@ -1,14 +1,14 @@
-name: Check for libtiff updates
+name: Check for libwebp updates
 
 # Thin caller for native-lib-update-check.yml -- see that file for what this actually runs.
 
 on:
   schedule:
-    - cron: "0 6 * * 1" # every Monday 06:00 UTC
+    - cron: "0 6 * * 2" # every Tuesday 06:00 UTC -- offset from libtiff's Monday check
   workflow_dispatch:
 
 concurrency:
-  group: libtiff-update-check-${{ github.ref }}
+  group: libwebp-update-check-${{ github.ref }}
   cancel-in-progress: true
 
 # Ceiling for the called reusable workflow's pr/merge jobs -- its own check/verify jobs declare
@@ -21,6 +21,6 @@ jobs:
   update-check:
     uses: ./.github/workflows/native-lib-update-check.yml
     with:
-      library_name: libtiff
-      repo_url: https://gitlab.com/libtiff/libtiff
+      library_name: libwebp
+      repo_url: https://github.com/webmproject/libwebp
     secrets: inherit
