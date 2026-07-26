@@ -117,25 +117,24 @@ public final class TiffRenderer implements AutoCloseable {
      */
     public TiffRenderer(@NonNull ParcelFileDescriptor input) throws IOException {
         Objects.requireNonNull(input, "input cannot be null");
-
-        final long size;
-        try {
-            Os.lseek(input.getFileDescriptor(), 0, OsConstants.SEEK_SET);
-            size = Os.fstat(input.getFileDescriptor()).st_size;
-        } catch (ErrnoException ee) {
-            throw new IllegalArgumentException("file descriptor not seekable", ee);
-        }
         mInput = input;
 
-        synchronized (sTiffLock) {
-            mNativeDocument = TiffRendererNative.nativeOpen(mInput.getFd(), size);
+        try {
+            final long size;
             try {
-                mPageCount = TiffRendererNative.nativeGetPageCount(mNativeDocument);
-            } catch (Throwable t) {
-                TiffRendererNative.nativeClose(mNativeDocument);
-                mNativeDocument = 0;
-                throw t;
+                Os.lseek(mInput.getFileDescriptor(), 0, OsConstants.SEEK_SET);
+                size = Os.fstat(mInput.getFileDescriptor()).st_size;
+            } catch (ErrnoException ee) {
+                throw new IllegalArgumentException("file descriptor not seekable", ee);
             }
+
+            synchronized (sTiffLock) {
+                mNativeDocument = TiffRendererNative.nativeOpen(mInput.getFd(), size);
+                mPageCount = TiffRendererNative.nativeGetPageCount(mNativeDocument);
+            }
+        } catch (Throwable t) {
+            doClose();
+            throw t;
         }
     }
 
