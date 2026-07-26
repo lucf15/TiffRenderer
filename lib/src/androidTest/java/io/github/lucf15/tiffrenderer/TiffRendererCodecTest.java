@@ -113,12 +113,12 @@ public class TiffRendererCodecTest {
         assertDecodesAllPages("supported_ccittg4.tif", 1);
     }
 
-    // --- Unsupported (codec disabled at build time -- see CMakeLists.txt) ---------------------
-
     @Test
-    public void jpeg_rejectedAtRenderNotOpen() throws IOException {
-        assertRejectedAtRenderNotOpen("unsupported_jpeg.tif");
+    public void jpeg_decodesAllPages() throws IOException {
+        assertDecodesAllPages("supported_jpeg.tif", RGB_PAGE_COUNT);
     }
+
+    // --- Unsupported (codec disabled at build time -- see CMakeLists.txt) ---------------------
 
     @Test
     public void zstd_rejectedAtRenderNotOpen() throws IOException {

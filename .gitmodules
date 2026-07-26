@@ -1,3 +1,6 @@
 [submodule "lib/src/main/cpp/third_party/libtiff"]
 	path = lib/src/main/cpp/third_party/libtiff
 	url = https://gitlab.com/libtiff/libtiff.git
+[submodule "lib/src/main/cpp/third_party/libjpeg"]
+	path = lib/src/main/cpp/third_party/libjpeg
+	url = https://github.com/libjpeg-turbo/ijg.git

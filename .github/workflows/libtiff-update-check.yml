@@ -32,6 +32,7 @@ jobs:
     outputs:
       bump: ${{ steps.check.outputs.bump }}
       new_tag: ${{ steps.check.outputs.new_tag }}
+      current_tag: ${{ steps.check.outputs.current_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +49,7 @@ jobs:
           if [ -n "$latest_tag" ] && [ "$current_tag" != "$latest_tag" ]; then
             echo "bump=true" >> "$GITHUB_OUTPUT"
             echo "new_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+            echo "current_tag=$current_tag" >> "$GITHUB_OUTPUT"
           else
             echo "bump=false" >> "$GITHUB_OUTPUT"
           fi
@@ -134,6 +136,16 @@ jobs:
           git fetch --tags --quiet
           git checkout "${{ needs.check.outputs.new_tag }}"
 
+      - name: Update README version references
+        # README.md hardcodes the pinned libtiff version in two places (for at-a-glance
+        # readability, not just a `git describe` command) -- keep them in lockstep with the
+        # submodule bump itself, in the same commit, rather than letting docs silently drift
+        # out of sync with what auto-merges.
+        run: |
+          old_version="${{ needs.check.outputs.current_tag }}"
+          new_version="${{ needs.check.outputs.new_tag }}"
+          sed -i "s/${old_version#v}/${new_version#v}/g" README.md
+
       - name: Open PR
         id: pr
         uses: peter-evans/create-pull-request@v6
@@ -142,7 +154,8 @@ jobs:
           title: "chore(libtiff): bump submodule to ${{ needs.check.outputs.new_tag }}"
           body: |
             Upstream released `${{ needs.check.outputs.new_tag }}` on
-            https://gitlab.com/libtiff/libtiff. This bumps the pinned submodule commit to match.
+            https://gitlab.com/libtiff/libtiff. This bumps the pinned submodule commit to match,
+            and updates the version references in README.md to stay in sync.
 
             Build (all 4 ABIs) and the full instrumented suite (codec support matrix + corrupt-input
             crash tests) already ran against this exact change before this PR was opened.

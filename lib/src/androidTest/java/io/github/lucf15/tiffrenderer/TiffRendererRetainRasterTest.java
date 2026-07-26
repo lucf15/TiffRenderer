@@ -69,7 +69,7 @@ public class TiffRendererRetainRasterTest {
      */
     @Test
     public void unsupportedCodec_rejectedByRetainRasterItself() throws IOException {
-        try (ParcelFileDescriptor pfd = TestAssets.open("unsupported_jpeg.tif");
+        try (ParcelFileDescriptor pfd = TestAssets.open("unsupported_zstd.tif");
                 TiffRenderer renderer = new TiffRenderer(pfd)) {
             TiffRenderer.Page page = renderer.openPage(0);
             try {

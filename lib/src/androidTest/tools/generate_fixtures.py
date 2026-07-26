@@ -241,7 +241,7 @@ def main():
     tiffcp("packbits", base_rgb, "supported_packbits.tif")
     tiffcp("zip", base_rgb, "supported_deflate.tif")
     tiffcp("g4", base_bilevel, "supported_ccittg4.tif")
-    tiffcp("jpeg", base_rgb, "unsupported_jpeg.tif", extra_args=["-r", "48"])
+    tiffcp("jpeg", base_rgb, "supported_jpeg.tif", extra_args=["-r", "48"])
     tiffcp("zstd", base_rgb, "unsupported_zstd.tif")
     tiffcp("lzma", base_rgb, "unsupported_lzma.tif")
 

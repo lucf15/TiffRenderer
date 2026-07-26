@@ -2,14 +2,14 @@
 
 [![](https://jitpack.io/v/lucf15/TiffRenderer.svg)](https://jitpack.io/#lucf15/TiffRenderer)
 
-An Android library for decoding and rasterizing TIFF files — including multi-page/multi-directory
-ones — on top of [libtiff](http://libtiff.org/), cross-compiled with the NDK behind a thin JNI
-layer.
+An Android library for decoding and rasterizing TIFF files, including multi-page/multi-directory
+ones, on top of [libtiff](http://libtiff.org/) 4.7.2 (JPEG-in-TIFF via vendored [IJG
+libjpeg](https://www.ijg.org/) 10), cross-compiled with the NDK behind a thin JNI layer.
 
 Android ships a built-in renderer for PDF ([`PdfRenderer`][pdfrenderer-docs], backed by pdfium)
 but has no equivalent for TIFF. `TiffRenderer` fills that gap. Its public API is **deliberately
-modeled on `PdfRenderer`'s shape** — same method names, same lifecycle, the same `Page` /
-render-mode pattern — so it should feel immediately familiar if you've used `PdfRenderer` before.
+modeled on `PdfRenderer`'s shape**: same method names, same lifecycle, the same `Page` /
+render-mode pattern, so it should feel immediately familiar if you've used `PdfRenderer` before.
 
 [pdfrenderer-docs]: https://developer.android.com/reference/android/graphics/pdf/PdfRenderer
 
@@ -30,12 +30,12 @@ TiffRenderer(pfd).use { renderer ->
 - **Multi-page support.** Every TIFF directory is exposed as a `Page`, the same way `PdfRenderer`
   exposes PDF pages.
 - **Familiar API.** If you know `PdfRenderer`, you already know most of this library. It diverges
-  from that shape only where TIFF's reality genuinely differs — see [Divergences from
+  from that shape only where TIFF's reality genuinely differs; see [Divergences from
   `PdfRenderer`](#divergences-from-pdfrenderer) below.
 - **Two render modes.** `RENDER_MODE_FOR_DISPLAY` (bilinear resampling, for on-screen viewing) and
   `RENDER_MODE_FOR_PRINT` (nearest-neighbor, for exact pixel reproduction).
 - **Opt-in decode caching.** `Page#retainRaster()` decodes a page once and reuses that decode
-  across repeated `render()` calls — useful when rendering the same page at multiple zoom levels
+  across repeated `render()` calls, useful when rendering the same page at multiple zoom levels
   or tile sizes. Off by default, since the cached raster is the page's full uncompressed pixel
   grid (hundreds of MB for a large scanned page).
 - **Clip and transform support.** `render()` accepts an optional destination clip `Rect` and an
@@ -52,16 +52,20 @@ This is a young library, and codec support is intentionally narrow in this first
 | LZW                   | ✅        |                                            |
 | CCITT Group 3/4 (fax) | ✅        |                                            |
 | Deflate / ZIP         | ✅        | via the NDK's bundled zlib                |
-| JPEG-in-TIFF          | ❌        | would require vendoring libjpeg           |
+| JPEG-in-TIFF          | ✅        | via vendored IJG libjpeg 10               |
 | WebP                  | ❌        | would require vendoring libwebp           |
 | Zstd                  | ❌        | would require vendoring libzstd           |
 | LERC                  | ❌        | would require vendoring LERC              |
 | LZMA                  | ❌        | would require vendoring liblzma           |
 | JBIG                  | ❌        | untested, no fixture available            |
 
+Native libraries are vendored as pinned git submodules:
+[libtiff](https://gitlab.com/libtiff/libtiff) 4.7.2 and
+[IJG libjpeg](https://github.com/libjpeg-turbo/ijg) 10.
+
 A TIFF using an unsupported codec opens fine (the compression tag is just metadata until
 something actually tries to decode pixels) but `Page#render()` throws `IOException` once decoding
-is actually attempted — it never silently misdecodes or crashes.
+is actually attempted. It never silently misdecodes or crashes.
 
 ## Installation
 
@@ -105,8 +109,8 @@ dependencies {
 
 Building the library requires the Android NDK and CMake (versions pinned in `lib/build.gradle.kts`
 via `ndkVersion` / `externalNativeBuild.cmake.version`); Gradle will fetch them automatically if
-they aren't already installed. libtiff itself is vendored as a git submodule, so clone with
-`--recurse-submodules` (or run `git submodule update --init --recursive` afterwards) before
+they aren't already installed. libtiff and libjpeg are both vendored as git submodules, so clone
+with `--recurse-submodules` (or run `git submodule update --init --recursive` afterwards) before
 building.
 
 ## Quick start
@@ -150,7 +154,7 @@ renderer.openPage(0).use { page ->
 
 - One `TiffRenderer` per open document; close it when you're done with `close()` (or `.use {}`).
 - Only one `Page` may be open at a time per `TiffRenderer`, matching libtiff's own
-  single-directory-cursor model — open, render, close before opening the next page.
+  single-directory-cursor model: open, render, close before opening the next page.
 - `TiffRenderer(...)`, `openPage()`, and `Page#render()`/`retainRaster()` all declare
   `throws IOException`: a directory can fail to open, or a page's compression scheme can fail to
   decode, even after the document itself opened successfully.
@@ -176,4 +180,4 @@ via the system file picker and page through it in an edge-to-edge scrolling view
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).
