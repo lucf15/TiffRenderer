@@ -4,15 +4,12 @@ plugins {
 }
 
 android {
-    namespace = "io.github.lucf15.tiffrenderer"
+    namespace = "com.github.lucf15.tiffrenderer"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
     publishing {
-        // Consumed by JitPack's `./gradlew :lib:publishToMavenLocal` (see jitpack.yml) —
-        // JitPack derives the actual consumer coordinate (com.github.lucf15.TiffRenderer:lib)
-        // from the repo/module itself and ignores groupId/artifactId below for that path, but
-        // they're set for correctness if this ever also gets published to Maven Central.
+        // groupId/artifactId below are for local/composite-build consumption only -- JitPack derives its own coordinate from the repo itself (see jitpack.yml).
         singleVariant("release") {
             withSourcesJar()
         }
@@ -24,9 +21,6 @@ android {
 
         externalNativeBuild {
             cmake {
-                // Keep only baseline + zlib/deflate codecs (built from libtiff's own bundled
-                // sources / the NDK's system libz) — see CMakeLists.txt for why JPEG, WebP, LERC,
-                // Zstd, LZMA and JBIG codecs are disabled for now.
                 arguments += listOf("-DANDROID_STL=c++_shared")
             }
         }
@@ -76,7 +70,7 @@ afterEvaluate {
         publications {
             create<MavenPublication>("release") {
                 from(components["release"])
-                groupId = "io.github.lucf15"
+                groupId = "com.github.lucf15"
                 artifactId = "tiffrenderer"
                 // JitPack sets $VERSION to the requested tag; falls back for local testing.
                 version = System.getenv("VERSION") ?: "0.1.0-SNAPSHOT"

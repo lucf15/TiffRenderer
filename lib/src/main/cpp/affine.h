@@ -21,10 +21,7 @@
 
 namespace tiffrenderer {
 
-// A 2D affine transform, laid out to match android.graphics.Matrix#getValues(): dstX = mxx*x +
-// mxy*y + mtx; dstY = myx*x + myy*y + mty. Page#render() ships us dst = M * src (page pixels ->
-// bitmap pixels); rendering walks the *destination* clip rect and needs the inverse to find
-// which source pixel feeds each destination pixel.
+// A 2D affine transform matching android.graphics.Matrix#getValues() layout; invert() is used to map destination pixels back to source pixels.
 class AffineTransform {
 public:
     AffineTransform() : AffineTransform(1, 0, 0, 0, 1, 0) {}
@@ -38,8 +35,7 @@ public:
     }
 
     bool invert(AffineTransform* out) const {
-        // std::fabs(NaN) < 1e-9f is false, so a non-finite component would otherwise slip past
-        // the determinant check below undetected.
+        // std::fabs(NaN) < 1e-9f is false, so a non-finite component must be checked explicitly.
         if (!std::isfinite(mxx_) || !std::isfinite(mxy_) || !std::isfinite(mtx_)
                 || !std::isfinite(myx_) || !std::isfinite(myy_) || !std::isfinite(mty_)) {
             return false;

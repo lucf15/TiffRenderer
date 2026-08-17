@@ -35,8 +35,7 @@ tsize_t readProc(thandle_t handle, tdata_t buf, tsize_t size) {
 }
 
 tsize_t writeProc(thandle_t /*handle*/, tdata_t /*buf*/, tsize_t /*size*/) {
-    // This wrapper only ever opens TIFFs "r" (read-only) — TIFFClientOpen still requires a
-    // non-null write proc to be registered, it just never gets called in read mode.
+    // Read-only wrapper; TIFFClientOpen requires a non-null write proc even though it's never called.
     errno = EROFS;
     return static_cast<tsize_t>(-1);
 }
@@ -48,11 +47,7 @@ toff_t seekProc(thandle_t handle, toff_t offset, int whence) {
 }
 
 int closeProc(thandle_t /*handle*/) {
-    // Deliberately does not touch the fd or free FdHandle here (TIFFClose() may invoke this
-    // more than once across error paths). closeTiff() below is the single place that frees
-    // FdHandle, after TIFFClose() has fully finished with it. The fd itself is never closed
-    // natively at all — Java's ParcelFileDescriptor owns that, matching how PdfRenderer leaves
-    // fd lifecycle entirely to the Java side.
+    // No-op: closeTiff() frees FdHandle after TIFFClose() finishes; the fd stays owned by Java.
     return 0;
 }
 
@@ -61,9 +56,7 @@ toff_t sizeProc(thandle_t handle) {
 }
 
 int mapFileProc(thandle_t /*handle*/, tdata_t* /*paddr*/, toff_t* /*psize*/) {
-    // Returning failure here forces libtiff to fall back to read/seek instead of mmap: a
-    // ParcelFileDescriptor-backed fd (content:// stream, pipe, etc.) isn't guaranteed to be
-    // mmap-able the way a plain local file path would be.
+    // Forces libtiff's read/seek fallback -- a ParcelFileDescriptor-backed fd isn't guaranteed mmap-able.
     return 0;
 }
 
@@ -71,7 +64,7 @@ void unmapFileProc(thandle_t /*handle*/, tdata_t /*addr*/, toff_t /*size*/) {}
 
 }  // namespace
 
-TIFF* openFromFd(int fd, long size) {
+TIFF* openFromFd(int fd, int64_t size) {
     auto* handle = new FdHandle{fd, static_cast<toff_t>(size)};
     TIFF* tiff = TIFFClientOpen("TiffRenderer", "r", reinterpret_cast<thandle_t>(handle),
             readProc, writeProc, seekProc, closeProc, sizeProc, mapFileProc, unmapFileProc);

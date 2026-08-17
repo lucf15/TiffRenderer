@@ -107,7 +107,7 @@ Or, to build against a local clone instead, a Gradle
 // settings.gradle.kts, in the app that wants to depend on this library
 includeBuild("../path/to/TiffRenderer") {
     dependencySubstitution {
-        substitute(module("io.github.lucf15:tiffrenderer")).using(project(":lib"))
+        substitute(module("com.github.lucf15:tiffrenderer")).using(project(":lib"))
     }
 }
 ```
@@ -115,7 +115,7 @@ includeBuild("../path/to/TiffRenderer") {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("io.github.lucf15:tiffrenderer")
+    implementation("com.github.lucf15:tiffrenderer")
 }
 ```
 
@@ -128,7 +128,7 @@ before building.
 ## Quick start
 
 ```kotlin
-import io.github.lucf15.tiffrenderer.TiffRenderer
+import com.github.lucf15.tiffrenderer.TiffRenderer
 
 // `pfd` must be a seekable ParcelFileDescriptor -- e.g. from a content:// Uri via
 // context.contentResolver.openFileDescriptor(uri, "r"). TiffRenderer takes ownership of it.

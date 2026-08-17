@@ -19,18 +19,14 @@
 
 #include <tiffio.h>
 
+#include <cstdint>
+
 namespace tiffrenderer {
 
-// Opens a TIFF over a raw file descriptor via TIFFClientOpen, the same "custom I/O callbacks
-// instead of a path" trick android.graphics.pdf.PdfRenderer uses for pdfium's
-// FPDF_LoadCustomDocument (see PdfUtils.cpp's getBlock/pread — this is the libtiff analogue).
-// The fd itself is never opened or closed here: the caller (TiffRenderer.java, via
-// ParcelFileDescriptor) owns its lifecycle for the whole native document's lifetime, exactly
-// like PdfRenderer leaves fd ownership to the Java side.
-TIFF* openFromFd(int fd, long size);
+// Opens a TIFF over a raw fd; size is int64_t, not long, to avoid truncating files over ~2GiB on 32-bit ABIs.
+TIFF* openFromFd(int fd, int64_t size);
 
-// Releases the resources associated with a TIFF* returned by openFromFd, including the small
-// bookkeeping struct stashed in its client data.
+// Frees the bookkeeping struct stashed in the TIFF*'s client data; doesn't touch the fd.
 void closeTiff(TIFF* tiff);
 
 }  // namespace tiffrenderer

@@ -5,10 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "io.github.lucf15.tiffrenderer.sample"
+    namespace = "com.github.lucf15.tiffrenderer.sample"
     compileSdk = 37
     defaultConfig {
-        applicationId = "io.github.lucf15.tiffrenderer.sample"
+        applicationId = "com.github.lucf15.tiffrenderer.sample"
         minSdk = 24
         targetSdk = 37
         versionCode = 1

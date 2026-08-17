@@ -33,33 +33,34 @@
 
 #define LOG_TAG "TiffRendererJNI"
 #define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define ALOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 
 namespace tiffrenderer {
 
 namespace {
 
-// Mirrors TiffRenderer.Page.RENDER_MODE_FOR_DISPLAY; the only other legal value from Java is
-// RENDER_MODE_FOR_PRINT (2), which selects the nearest-neighbor path below.
+// The other legal value from Java, RENDER_MODE_FOR_PRINT (2), selects the nearest-neighbor path below.
 constexpr jint kRenderModeForDisplay = 1;
 
-// libtiff reports errors/warnings through a process-wide callback rather than a return-code
-// enum (unlike pdfium's FPDF_GetLastError()). All native entry points below run under Java's
-// TiffRenderer.sTiffLock, so a single scratch buffer — rather than one per TIFF* — is enough to
-// carry the most recent message from the handler out to the JNI call that triggered it.
+// libtiff reports errors via a process-wide callback, not a return code; all calls are serialized under TiffRenderer.sTiffLock so one scratch buffer suffices.
 thread_local std::string gLastError;
 
 void errorHandler(const char* module, const char* fmt, va_list args) {
     char buf[512];
     vsnprintf(buf, sizeof(buf), fmt, args);
-    gLastError = buf;
+    // Never let a std::bad_alloc here unwind through libtiff's C call frames.
+    try {
+        gLastError = buf;
+    } catch (const std::exception&) {
+    }
     ALOGE("%s: %s", module != nullptr ? module : "libtiff", buf);
 }
 
 void warningHandler(const char* module, const char* fmt, va_list args) {
     char buf[512];
     vsnprintf(buf, sizeof(buf), fmt, args);
-    ALOGW("%s: %s", module != nullptr ? module : "libtiff", buf);
+    // DEBUG, not WARN -- libtiff warns routinely on perfectly ordinary real-world TIFFs.
+    ALOGD("%s: %s", module != nullptr ? module : "libtiff", buf);
 }
 
 void throwException(JNIEnv* env, const char* className, const std::string& message) {
@@ -80,10 +81,7 @@ void throwIllegalState(JNIEnv* env, const std::string& message) {
     throwException(env, "java/lang/IllegalStateException", message);
 }
 
-// documentPtr points at one of these, not a bare TIFF*, so the currently-open page's decoded
-// raster can optionally outlive a single nativeRenderPage call (see Page#retainRaster). Only one
-// page is ever open at a time (enforced in TiffRenderer.java), so a single cache slot — rather
-// than a per-page map — is enough.
+// Holds the TIFF* plus an optional single-page raster cache for Page#retainRaster().
 struct TiffDocument {
     explicit TiffDocument(TIFF* t) : tiff(t) {}
 
@@ -98,9 +96,16 @@ TiffDocument* asDocument(jlong documentPtr) {
     return reinterpret_cast<TiffDocument*>(static_cast<intptr_t>(documentPtr));
 }
 
-// Shared by the cache-miss path of nativeRenderPage and nativeRetainRaster: seeks to pageIndex's
-// directory and fully decodes it to a packed-RGBA raster, throwing the appropriate IOException
-// on failure. Caller is responsible for gLastError.clear() beforehand.
+// documentPtr == 0 means a caller bypassed the Java wrapper (e.g. via reflection); throw instead of segfaulting.
+TiffDocument* requireDocument(JNIEnv* env, jlong documentPtr) {
+    if (documentPtr == 0) {
+        throwIllegalState(env, "TIFF document is not open");
+        return nullptr;
+    }
+    return asDocument(documentPtr);
+}
+
+// Seeks to pageIndex and decodes it to a packed-RGBA raster; caller must gLastError.clear() first.
 bool decodePageOrThrow(JNIEnv* env, TIFF* tiff, jint pageIndex, uint32_t* outWidth,
         uint32_t* outHeight, std::vector<uint32_t>* outRaster) {
     if (!TIFFSetDirectory(tiff, static_cast<tdir_t>(pageIndex))) {
@@ -115,10 +120,7 @@ bool decodePageOrThrow(JNIEnv* env, TIFF* tiff, jint pageIndex, uint32_t* outWid
         throwIOException(env, "invalid TIFF page dimensions");
         return false;
     }
-    // width/height come straight from the file's own tags. Widen to uint64_t before multiplying
-    // (size_t is only 32 bits on armeabi-v7a/x86 and would wrap silently) and reject anything
-    // past a sane decode size up front: Android's memory overcommit lets a "merely huge"
-    // allocation succeed and only crash later via the OOM killer, not a catchable exception.
+    // uint64_t avoids 32-bit size_t wraparound; the cap avoids a huge alloc succeeding via overcommit and OOM-killing later instead of throwing.
     constexpr uint64_t kMaxDecodedPixels = 250'000'000;  // ~1GB packed RGBA
     const uint64_t pixelCount = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
     if (pixelCount > kMaxDecodedPixels) {
@@ -141,9 +143,9 @@ bool decodePageOrThrow(JNIEnv* env, TIFF* tiff, jint pageIndex, uint32_t* outWid
     return true;
 }
 
-// Nearest-neighbor sample, used for RENDER_MODE_FOR_PRINT: reproduces source pixels exactly
-// with no smoothing, which is what you want when the output is going to a printer rather than
-// a possibly-zoomed screen.
+float clampFloat(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+// Used for RENDER_MODE_FOR_PRINT: exact source pixels, no smoothing.
 uint32_t sampleNearest(const uint32_t* raster, int srcWidth, int srcHeight, float x, float y) {
     int sx = static_cast<int>(x);
     int sy = static_cast<int>(y);
@@ -154,8 +156,7 @@ uint32_t sampleNearest(const uint32_t* raster, int srcWidth, int srcHeight, floa
     return raster[static_cast<size_t>(sy) * srcWidth + sx];
 }
 
-// Bilinear sample, used for RENDER_MODE_FOR_DISPLAY: smooths the zoomed-in blockiness a
-// nearest-neighbor sample would otherwise show on screen.
+// Used for RENDER_MODE_FOR_DISPLAY: smooths zoomed-in blockiness.
 uint32_t sampleBilinear(const uint32_t* raster, int srcWidth, int srcHeight, float x, float y) {
     const float fx = x - 0.5f;
     const float fy = y - 0.5f;
@@ -172,31 +173,68 @@ uint32_t sampleBilinear(const uint32_t* raster, int srcWidth, int srcHeight, flo
     y0 = clamp(y0, 0, srcHeight - 1);
     y1 = clamp(y1, 0, srcHeight - 1);
 
-    auto channel = [&](int shift) -> float {
-        auto at = [&](int px, int py) -> float {
-            return static_cast<float>((raster[static_cast<size_t>(py) * srcWidth + px] >> shift) & 0xff);
-        };
-        const float top = at(x0, y0) * (1 - tx) + at(x1, y0) * tx;
-        const float bottom = at(x0, y1) * (1 - tx) + at(x1, y1) * tx;
+    // Interpolate premultiplied by alpha to avoid halos at transparent edges; unpremultiply after.
+    auto sample = [&](int px, int py, float* r, float* g, float* b, float* a) {
+        const uint32_t p = raster[static_cast<size_t>(py) * srcWidth + px];
+        *a = static_cast<float>((p >> 24) & 0xff);
+        const float scale = *a / 255.0f;
+        *r = static_cast<float>(p & 0xff) * scale;
+        *g = static_cast<float>((p >> 8) & 0xff) * scale;
+        *b = static_cast<float>((p >> 16) & 0xff) * scale;
+    };
+
+    float r00, g00, b00, a00;
+    float r10, g10, b10, a10;
+    float r01, g01, b01, a01;
+    float r11, g11, b11, a11;
+    sample(x0, y0, &r00, &g00, &b00, &a00);
+    sample(x1, y0, &r10, &g10, &b10, &a10);
+    sample(x0, y1, &r01, &g01, &b01, &a01);
+    sample(x1, y1, &r11, &g11, &b11, &a11);
+
+    auto blend = [&](float v00, float v10, float v01, float v11) {
+        const float top = v00 * (1 - tx) + v10 * tx;
+        const float bottom = v01 * (1 - tx) + v11 * tx;
         return top * (1 - ty) + bottom * ty;
     };
 
-    const auto r = static_cast<uint32_t>(channel(0) + 0.5f);
-    const auto g = static_cast<uint32_t>(channel(8) + 0.5f);
-    const auto b = static_cast<uint32_t>(channel(16) + 0.5f);
-    const auto a = static_cast<uint32_t>(channel(24) + 0.5f);
-    return r | (g << 8) | (b << 16) | (a << 24);
+    const float a = blend(a00, a10, a01, a11);
+    float r = blend(r00, r10, r01, r11);
+    float g = blend(g00, g10, g01, g11);
+    float b = blend(b00, b10, b01, b11);
+    if (a > 0.0f) {
+        const float invA = 255.0f / a;
+        r *= invA;
+        g *= invA;
+        b *= invA;
+    }
+
+    auto toByte = [](float v) { return static_cast<uint32_t>(clampFloat(v + 0.5f, 0.0f, 255.0f)); };
+    return toByte(r) | (toByte(g) << 8) | (toByte(b) << 16) | (toByte(a) << 24);
 }
 
 jlong nativeOpen(JNIEnv* env, jclass /*clazz*/, jint fd, jlong size) {
     gLastError.clear();
-    TIFF* tiff = openFromFd(fd, size);
+    // Guard the two allocations decodePageOrThrow's resize try/catch doesn't cover.
+    TIFF* tiff = nullptr;
+    try {
+        tiff = openFromFd(fd, size);
+    } catch (const std::exception&) {
+        throwIOException(env, "out of memory opening TIFF");
+        return 0;
+    }
     if (tiff == nullptr) {
         throwIOException(env, "cannot open TIFF");
         return 0;
     }
-    auto* doc = new TiffDocument(tiff);
-    return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
+    try {
+        auto* doc = new TiffDocument(tiff);
+        return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
+    } catch (const std::exception&) {
+        closeTiff(tiff);
+        throwIOException(env, "out of memory opening TIFF");
+        return 0;
+    }
 }
 
 void nativeClose(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
@@ -208,13 +246,25 @@ void nativeClose(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
     delete doc;
 }
 
-jint nativeGetPageCount(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
-    return static_cast<jint>(TIFFNumberOfDirectories(asDocument(documentPtr)->tiff));
+jint nativeGetPageCount(JNIEnv* env, jclass /*clazz*/, jlong documentPtr) {
+    TiffDocument* doc = requireDocument(env, documentPtr);
+    if (doc == nullptr) {
+        return 0;
+    }
+    return static_cast<jint>(TIFFNumberOfDirectories(doc->tiff));
 }
 
 void nativeOpenPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
         jintArray outSize) {
-    TIFF* tiff = asDocument(documentPtr)->tiff;
+    TiffDocument* doc = requireDocument(env, documentPtr);
+    if (doc == nullptr) {
+        return;
+    }
+    if (outSize == nullptr) {
+        throwException(env, "java/lang/IllegalArgumentException", "outSize cannot be null");
+        return;
+    }
+    TIFF* tiff = doc->tiff;
     gLastError.clear();
     if (!TIFFSetDirectory(tiff, static_cast<tdir_t>(pageIndex))) {
         throwIOException(env, "cannot open TIFF page");
@@ -237,10 +287,21 @@ void nativeOpenPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageI
 void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
         jobject bitmap, jint clipLeft, jint clipTop, jint clipRight, jint clipBottom,
         jfloatArray matrixValues, jint renderMode) {
-    TiffDocument* doc = asDocument(documentPtr);
+    TiffDocument* doc = requireDocument(env, documentPtr);
+    if (doc == nullptr) {
+        return;
+    }
+    if (bitmap == nullptr) {
+        throwException(env, "java/lang/IllegalArgumentException", "destination cannot be null");
+        return;
+    }
+    if (matrixValues == nullptr || env->GetArrayLength(matrixValues) < 9) {
+        throwException(env, "java/lang/IllegalArgumentException",
+                "matrixValues must have 9 elements");
+        return;
+    }
     gLastError.clear();
 
-    // TIFFReadRGBAImageOriented decodes the whole page into a packed-RGBA raster up front.
     // Reuse the retainRaster() cache instead of redecoding if it matches this page.
     uint32_t srcWidth;
     uint32_t srcHeight;
@@ -268,11 +329,18 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
         return;
     }
 
+    // Re-validate against the real bitmap -- never trust caller-supplied clip bounds this far in.
+    if (clipLeft < 0 || clipTop < 0 || clipLeft >= clipRight || clipTop >= clipBottom
+            || clipRight > static_cast<jint>(info.width)
+            || clipBottom > static_cast<jint>(info.height)) {
+        throwException(env, "java/lang/IllegalArgumentException",
+                "clip bounds outside destination bitmap");
+        return;
+    }
+
     jfloat matrix[9];
     env->GetFloatArrayRegion(matrixValues, 0, 9, matrix);
-    // android.graphics.Matrix#getValues() order: MSCALE_X, MSKEW_X, MTRANS_X, MSKEW_Y,
-    // MSCALE_Y, MTRANS_Y, MPERSP_0, MPERSP_1, MPERSP_2 — perspective terms are ignored because
-    // TiffRenderer.Page#render() already rejects non-affine transforms in Java.
+    // Matrix#getValues() order; perspective terms are ignored since Java already rejects non-affine transforms.
     const AffineTransform forward(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4],
             matrix[5]);
     AffineTransform inverse;
@@ -300,9 +368,7 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
             inverse.apply(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f, &srcX,
                     &srcY);
             if (srcX < 0 || srcY < 0 || srcX >= iSrcWidth || srcY >= iSrcHeight) {
-                // Outside the source page: leave the destination pixel untouched, same
-                // "caller must pre-initialize outside the clip" contract as
-                // android.graphics.pdf.PdfRenderer.Page#render.
+                // Outside the source page: leave the destination pixel untouched (same contract as PdfRenderer.Page#render).
                 continue;
             }
             dst[y * dstStride + x] = bilinear
@@ -314,11 +380,12 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
     AndroidBitmap_unlockPixels(env, bitmap);
 }
 
-// Decodes pageIndex now and stashes the raster on documentPtr's TiffDocument so subsequent
-// nativeRenderPage calls against the same page reuse it instead of redecoding. Opt-in — see
-// TiffRenderer.Page#retainRaster() for why this isn't the default.
+// Decodes pageIndex now and caches it so subsequent nativeRenderPage calls reuse it; see Page#retainRaster().
 void nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex) {
-    TiffDocument* doc = asDocument(documentPtr);
+    TiffDocument* doc = requireDocument(env, documentPtr);
+    if (doc == nullptr) {
+        return;
+    }
     gLastError.clear();
 
     uint32_t width;
@@ -333,9 +400,12 @@ void nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint p
     doc->cachedPageIndex = pageIndex;
 }
 
-// Frees whatever nativeRetainRaster cached, if anything. A no-op when nothing is cached, so it's
-// safe for Page#close() to call unconditionally.
+// Frees whatever nativeRetainRaster cached; safe for Page#close() to call unconditionally.
 void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
+    // No-op on 0, same contract as nativeClose.
+    if (documentPtr == 0) {
+        return;
+    }
     TiffDocument* doc = asDocument(documentPtr);
     doc->cachedPageIndex = -1;
     doc->cachedWidth = 0;
@@ -368,7 +438,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
     TIFFSetErrorHandler(tiffrenderer::errorHandler);
     TIFFSetWarningHandler(tiffrenderer::warningHandler);
 
-    jclass clazz = env->FindClass("io/github/lucf15/tiffrenderer/TiffRendererNative");
+    jclass clazz = env->FindClass("com/github/lucf15/tiffrenderer/TiffRendererNative");
     if (clazz == nullptr) {
         return JNI_ERR;
     }

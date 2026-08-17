@@ -1,4 +1,4 @@
 # Native method names/signatures must survive so JNI RegisterNatives can find them.
--keepclasseswithmembernames class io.github.lucf15.tiffrenderer.** {
+-keepclasseswithmembernames class com.github.lucf15.tiffrenderer.** {
     native <methods>;
 }
