@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -47,7 +47,7 @@ jobs:
           path: lib/core/build/outputs/aar/core.aar
           if-no-files-found: error
 
-  jvm-natives:
+  build-jvm:
     strategy:
       fail-fast: false
       matrix:
@@ -75,8 +75,25 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-android-toolchain
+
+      - name: Install a CMake newer than the NDK-pinned 3.22.1 for the iOS Xcode-generator build
+        run: |
+          brew install cmake
+          echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
+
+      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:compileKotlinIosSimulatorArm64
+
   release:
-    needs: build
+    needs: build-android
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -97,7 +114,7 @@ jobs:
           generate_release_notes: true
 
   semantic-release:
-    needs: build
+    needs: build-android
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -138,7 +155,7 @@ jobs:
           gh release upload "v${{ steps.release.outputs.new_release_version }}" release-assets/*.apk --repo ${{ github.repository }}
 
   publish-central:
-    needs: [semantic-release, jvm-natives]
+    needs: [semantic-release, build-jvm]
     if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
@@ -155,7 +172,7 @@ jobs:
           brew install cmake
           echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
 
-      - name: Download Linux/Windows JVM natives built by the jvm-natives matrix
+      - name: Download Linux/Windows JVM natives built by the build-jvm matrix
         uses: actions/download-artifact@v4
         with:
           pattern: jvm-natives-*
