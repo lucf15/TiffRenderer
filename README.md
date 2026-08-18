@@ -46,6 +46,9 @@ TiffRenderer(TiffSource.fromFileDescriptor(fd, size)).use { renderer ->
 
 ## Installation
 
+> Versions before 2.0.0 were published to JitPack under `com.github.lucf15:TiffRenderer`. That
+> coordinate is no longer updated; migrate to the Maven Central one below.
+
 Published to Maven Central as `io.github.lucf15:tiffrenderer`, a regular Kotlin Multiplatform
 artifact (Android, JVM/desktop, `iosArm64`/`iosSimulatorArm64`):
 

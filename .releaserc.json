@@ -5,9 +5,20 @@
       "preset": "angular",
       "releaseRules": [
         { "type": "chore", "scope": "libtiff", "release": "patch" }
-      ]
+      ],
+      "parserOpts": {
+        "headerPattern": "^(\\w*)(?:\\((.*)\\))?(!)?: (.*)$",
+        "headerCorrespondence": ["type", "scope", "breaking", "subject"],
+        "breakingHeaderPattern": "^(\\w*)(?:\\((.*)\\))?!: (.*)$"
+      }
     }],
-    "@semantic-release/release-notes-generator",
+    ["@semantic-release/release-notes-generator", {
+      "parserOpts": {
+        "headerPattern": "^(\\w*)(?:\\((.*)\\))?(!)?: (.*)$",
+        "headerCorrespondence": ["type", "scope", "breaking", "subject"],
+        "breakingHeaderPattern": "^(\\w*)(?:\\((.*)\\))?!: (.*)$"
+      }
+    }],
     "@semantic-release/github"
   ]
 }
