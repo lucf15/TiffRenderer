@@ -30,29 +30,51 @@ jobs:
       - uses: ./.github/actions/setup-android-toolchain
 
       - name: Build library (all ABIs)
-        run: ./gradlew :lib:assembleDebug
+        run: ./gradlew :lib:core:bundleAndroidMainAar
 
       - name: Build sample app
-        run: ./gradlew :sample:assembleDebug
+        run: ./gradlew :sample:androidApp:assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
           name: sample-debug-apk
-          path: sample/build/outputs/apk/debug/sample-debug.apk
+          path: sample/androidApp/build/outputs/apk/debug/androidApp-debug.apk
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
           name: lib-debug-aar
-          path: lib/build/outputs/aar/lib-debug.aar
+          path: lib/core/build/outputs/aar/core.aar
           if-no-files-found: error
 
-  # Only runs on a version tag push -- attaches the same build's sample APK to a GitHub Release
-  # instead of rebuilding from scratch, so a human has something to install directly without
-  # cloning/building. The library .aar is deliberately NOT attached here: a bare .aar has no POM/
-  # module metadata, so it can't be resolved as a normal Gradle dependency (only manually wired via
-  # a flatDir repo) -- strictly worse than the JitPack coordinate already documented in the README.
-  # Separate concern from jitpack-build.yml, which verifies that Maven artifact actually builds.
+  jvm-natives:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: ./gradlew :lib:core:jvmTest :sample:desktopApp:jar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jvm-natives-${{ matrix.os }}
+          path: lib/native/build/jvm/natives/
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -67,21 +89,13 @@ jobs:
           path: release-assets
 
       - name: Rename artifact to include the tag
-        run: mv release-assets/sample-debug.apk "release-assets/tiffrenderer-sample-${GITHUB_REF_NAME}.apk"
+        run: mv release-assets/androidApp-debug.apk "release-assets/tiffrenderer-sample-${GITHUB_REF_NAME}.apk"
 
       - uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
           generate_release_notes: true
 
-  # Computes the next version from Conventional Commits since the last tag (see .releaserc.json)
-  # and cuts the release automatically. Uses the plain GITHUB_TOKEN deliberately, not a PAT: a
-  # GITHUB_TOKEN-created tag/release does not trigger other workflows (GitHub's own recursion
-  # prevention), which would normally mean the `release` job above and jitpack-build.yml silently
-  # never fire for an automated release. Rather than work around that with a PAT (semantic-release's
-  # own docs advise against it, and it's not even reliably fixed upstream -- see
-  # cycjimmy/semantic-release-action#128), this job does the follow-up itself instead of depending
-  # on a second workflow run.
   semantic-release:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -91,10 +105,13 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    outputs:
+      new_release_published: ${{ steps.release.outputs.new_release_published }}
+      new_release_version: ${{ steps.release.outputs.new_release_version }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # semantic-release needs full tag history, not the default shallow clone
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -117,11 +134,40 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mv release-assets/sample-debug.apk "release-assets/tiffrenderer-sample-v${{ steps.release.outputs.new_release_version }}.apk"
+          mv release-assets/androidApp-debug.apk "release-assets/tiffrenderer-sample-v${{ steps.release.outputs.new_release_version }}.apk"
           gh release upload "v${{ steps.release.outputs.new_release_version }}" release-assets/*.apk --repo ${{ github.repository }}
 
-      - name: Warm JitPack build for the new version
-        if: steps.release.outputs.new_release_published == 'true'
-        uses: ./.github/actions/trigger-jitpack-build
+  publish-central:
+    needs: [semantic-release, jvm-natives]
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
         with:
-          tag: v${{ steps.release.outputs.new_release_version }}
+          ref: v${{ needs.semantic-release.outputs.new_release_version }}
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-android-toolchain
+
+      - name: Install a CMake newer than the NDK-pinned 3.22.1 for the iOS Xcode-generator build
+        run: |
+          brew install cmake
+          echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
+
+      - name: Download Linux/Windows JVM natives built by the jvm-natives matrix
+        uses: actions/download-artifact@v4
+        with:
+          pattern: jvm-natives-*
+          path: lib/native/build/jvm/natives
+          merge-multiple: true
+
+      - name: Publish to Maven Central
+        env:
+          VERSION: ${{ needs.semantic-release.outputs.new_release_version }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+        run: ./gradlew publishToMavenCentral

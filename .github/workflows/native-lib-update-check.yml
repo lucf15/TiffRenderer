@@ -1,23 +1,10 @@
 name: Native library update check
 
-# Reusable workflow: opens a PR bumping one vendored native-library submodule when a newer stable
-# release tag appears upstream. Called once per library (see libtiff-update-check.yml /
-# libwebp-update-check.yml) rather than duplicated per library -- the check/verify/pr/merge shape
-# below is identical for both, only the repo URL, submodule path, and README version string
-# differ, which is exactly what `inputs` parameterizes.
-#
-# Four jobs deliberately, not one: `check` is cheap and should fail fast on weeks with no release;
-# `verify` is the expensive build+emulator work and gets no write access (it never touches GitHub
-# state); `pr`/`merge` are the only jobs with contents/PR write access, kept least-privilege. A PR
-# opened here with the default GITHUB_TOKEN cannot itself trigger a separate pull_request-triggered
-# workflow (GitHub blocks that recursion), which is why verification has to happen as a job in
-# *this* workflow rather than a second one reacting to the PR.
-
 on:
   workflow_call:
     inputs:
       library_name:
-        description: 'Submodule directory name under lib/src/main/cpp/third_party/, e.g. "libtiff"'
+        description: 'Submodule directory name under lib/native/src/main/cpp/third_party/, e.g. "libtiff"'
         required: true
         type: string
       repo_url:
@@ -29,8 +16,6 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Explicit read-only: the caller grants a ceiling wide enough for pr/merge below, so this
-    # needs its own narrower block rather than inheriting that ceiling by default.
     permissions:
       contents: read
     outputs:
@@ -45,7 +30,7 @@ jobs:
       - name: Check for a newer stable tag
         id: check
         run: |
-          cd "lib/src/main/cpp/third_party/${{ inputs.library_name }}"
+          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
           git fetch --tags --quiet
           current_tag=$(git describe --tags --exact-match 2>/dev/null || echo "")
           latest_tag=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
@@ -72,14 +57,14 @@ jobs:
 
       - name: Check out candidate version
         run: |
-          cd "lib/src/main/cpp/third_party/${{ inputs.library_name }}"
+          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
           git fetch --tags --quiet
           git checkout "${{ needs.check.outputs.new_tag }}"
 
       - uses: ./.github/actions/setup-android-toolchain
 
       - name: Build library (all ABIs)
-        run: ./gradlew :lib:assembleDebug
+        run: ./gradlew :lib:core:bundleAndroidMainAar
 
       - name: Enable KVM for the emulator
         run: |
@@ -116,12 +101,10 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :lib:connectedDebugAndroidTest
+          script: ./gradlew :lib:core:connectedAndroidDeviceTest
 
   pr:
     needs: [check, verify]
-    # always() so this still runs even if verify failed above -- we want a PR opened either way,
-    # as a visible record; only the merge job is conditional on verify having actually succeeded.
     if: always() && needs.check.outputs.bump == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -138,14 +121,11 @@ jobs:
 
       - name: Check out candidate version
         run: |
-          cd "lib/src/main/cpp/third_party/${{ inputs.library_name }}"
+          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
           git fetch --tags --quiet
           git checkout "${{ needs.check.outputs.new_tag }}"
 
       - name: Update README version reference
-        # README.md's "Native libraries" table is the single place a pinned version is written
-        # out -- keep it in lockstep with the submodule bump itself, in the same commit, rather
-        # than letting docs silently drift out of sync with what auto-merges.
         run: |
           old_version="${{ needs.check.outputs.current_tag }}"
           new_version="${{ needs.check.outputs.new_tag }}"
@@ -164,7 +144,7 @@ jobs:
 
             Build (all 4 ABIs) and the full instrumented suite (codec support matrix + corrupt-input
             crash tests) already ran against this exact change before this PR was opened.
-            ${{ needs.verify.result == 'success' && 'They passed, so this auto-merges.' || '**They FAILED** -- this needs manual investigation before merging.' }}
+            ${{ needs.verify.result == 'success' && 'They passed, so this auto-merges.' || '**They FAILED**: this needs manual investigation before merging.' }}
           branch: bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
           base: main
           labels: dependencies

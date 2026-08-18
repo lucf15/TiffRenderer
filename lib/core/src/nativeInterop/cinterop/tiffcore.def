@@ -1,0 +1,8 @@
+# cinterop binding for tiff_core.h: the platform-neutral libtiff wrapper extracted out of the
+# JNI layer. staticLibraries lists tiffcore's own closure plus every static lib it transitively
+# links (CMake doesn't merge static-lib dependencies); libraryPaths/header search path is supplied
+# per target from build.gradle.kts, since build-ios.sh's output lives in a separate directory per
+# Kotlin/Native target (iosArm64/iosSimulatorArm64).
+package = tiffcore
+headers = tiff_core.h
+staticLibraries = libtiffrenderer_core.a libtiff.a libijg_jpeg.a libwebp.a libsharpyuv.a
