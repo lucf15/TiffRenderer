@@ -1,18 +1,14 @@
 name: Check for libwebp updates
 
-# Thin caller for native-lib-update-check.yml -- see that file for what this actually runs.
-
 on:
   schedule:
-    - cron: "0 6 * * 2" # every Tuesday 06:00 UTC -- offset from libtiff's Monday check
+    - cron: "0 6 * * 2"
   workflow_dispatch:
 
 concurrency:
   group: libwebp-update-check-${{ github.ref }}
   cancel-in-progress: true
 
-# Ceiling for the called reusable workflow's pr/merge jobs -- its own check/verify jobs declare
-# a narrower contents:read regardless of what's granted here.
 permissions:
   contents: write
   pull-requests: write

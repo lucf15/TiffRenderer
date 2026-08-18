@@ -30,5 +30,8 @@ plugins {
 }
 
 rootProject.name = "TiffRenderer"
-include(":sample")
-include(":lib")
+include(":lib:native")
+include(":lib:core")
+include(":sample:androidApp")
+include(":sample:desktopApp")
+include(":sample:shared")
