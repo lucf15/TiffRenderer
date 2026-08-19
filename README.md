@@ -117,8 +117,9 @@ dependencies {
 }
 ```
 
-Bundles native libraries for macOS (`aarch64`), Linux (`x86_64`), and Windows (`x86_64`); the
-right one is picked automatically at runtime based on the host JVM's `os.name`/`os.arch`.
+Bundles native libraries for macOS (`aarch64`, `x86_64`), Linux (`x86_64`, `aarch64`), and Windows
+(`x86_64`, `aarch64`); the right one is picked automatically at runtime based on the host JVM's
+`os.name`/`os.arch`.
 
 ### Building from source
 
@@ -303,11 +304,14 @@ Each library's copyright notice and license terms are reproduced in
 
 ## Requirements
 
-- **Android**: `minSdk` 24+, `compileSdk` 37. Native libraries are built for `arm64-v8a`,
-  `armeabi-v7a`, `x86_64`, and `x86`.
-- **iOS**: deployment target 13.0+, `iosArm64` and `iosSimulatorArm64` (no `iosX64`: Apple/Xcode
-  itself has dropped support for the Intel simulator).
-- **JVM/desktop**: JDK 17+; macOS (`aarch64`), Linux (`x86_64`), Windows (`x86_64`).
+| Target      | Platform  | Architectures                                | Notes                                                     |
+| ----------- | --------- | --------------------------------------------- | ---------------------------------------------------------- |
+| Android     | Android   | `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`   | `minSdk` 24+, `compileSdk` 37                               |
+| iOS         | Device    | `arm64` (`iosArm64`)                          | Deployment target 13.0+                                     |
+| iOS         | Simulator | `arm64` (`iosSimulatorArm64`)                 | No `iosX64`: Apple/Xcode dropped Intel simulator support    |
+| JVM/desktop | macOS     | `aarch64`, `x86_64`                           | JDK 17+                                                     |
+| JVM/desktop | Linux     | `x86_64`, `aarch64`                           | JDK 17+                                                     |
+| JVM/desktop | Windows   | `x86_64`, `aarch64`                           | JDK 17+                                                     |
 
 ## Sample app
 

@@ -149,6 +149,6 @@ if [[ -z "$lib" ]]; then
   exit 1
 fi
 cp "$lib" "${TARGET_DIR}/${LIB_NAME}"
-rm -rf "$build_dir"
+rm -rf "$build_dir" || true
 
 echo "Done. Output in ${TARGET_DIR}/${LIB_NAME}"

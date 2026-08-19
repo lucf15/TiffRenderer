@@ -87,7 +87,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - os: macos-latest
+            java-arch: arm64
+            java-distribution: temurin
+          - os: macos-latest
+            java-arch: x64
+            java-distribution: temurin
+          - os: ubuntu-latest
+            java-arch: x64
+            java-distribution: temurin
+          - os: ubuntu-24.04-arm
+            java-arch: arm64
+            java-distribution: temurin
+          - os: windows-latest
+            java-arch: x64
+            java-distribution: temurin
+          - os: windows-11-arm
+            java-arch: arm64
+            java-distribution: zulu
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -97,8 +115,14 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: ${{ matrix.java-distribution }}
           java-version: "17"
+          architecture: ${{ matrix.java-arch }}
+
+      - uses: android-actions/setup-android@v3
+        if: contains(fromJSON('["ubuntu-24.04-arm", "windows-11-arm"]'), matrix.os)
+        with:
+          packages: ""
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -106,7 +130,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: jvm-natives-${{ matrix.os }}
+          name: jvm-natives-${{ matrix.os }}-${{ matrix.java-arch }}
           path: lib/native/build/jvm/natives/
           if-no-files-found: error
           retention-days: 1
