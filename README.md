@@ -47,23 +47,24 @@ lifecycle, same page/render-mode pattern), so it's immediately familiar to any A
 with divergences only where the underlying reality genuinely differs (documented inline where they
 occur).
 
-`TiffRenderer`/`TiffPage` are a **single concrete implementation shared across Android, iOS, and
-JVM**, cross-compiled behind one platform-neutral C++ decode/resample core (Android NDK/JNI,
-Xcode/Kotlin-Native cinterop on iOS, plain JNI on JVM desktop); only the innermost native call is
-platform-specific, so decode and render behavior doesn't drift between platforms. Every TIFF
-directory is exposed as a `TiffPage`, `render()` accepts an optional destination clip and affine
-transform, and `TiffPage#retainRaster()` gives you opt-in decode caching for rendering the same
-page at multiple zoom levels or tile sizes without redecoding each time (off by default, since a
-cached raster is the page's full uncompressed pixel grid — hundreds of MB for a large scanned
-page). `TiffRenderMode.FOR_DISPLAY` (bilinear + mip-level minification, for on-screen viewing) and
-`FOR_PRINT` (nearest-neighbor, for exact pixel reproduction) select genuinely different resampling
-behavior, not a decorative pass-through enum. On Android specifically, `TiffRenderer(ParcelFileDescriptor)`
-and `TiffPage#render(Bitmap, Rect?, Matrix?, TiffRenderMode)` accept the platform's own types
-directly, so Android-only call sites never have to touch the cross-platform
-`TiffSource`/`TiffBitmap`/`TiffRect`/`TiffTransform` wrapper types at all. JPEG-in-TIFF and WebP
-are supported via vendored [IJG libjpeg](https://www.ijg.org/) and
-[libwebp](https://github.com/webmproject/libwebp); see [Native libraries](#native-libraries) below
-for exact pinned versions.
+`TiffRenderer`/`TiffPage` are **one implementation shared across Android, iOS, and JVM** — a single
+platform-neutral C++ core, with only the innermost native call swapped per platform — so decoding
+and rendering never drift between them. A few things worth knowing:
+
+- Every TIFF directory is a `TiffPage`. `render()` takes an optional destination clip and affine
+  transform.
+- `TiffPage#retainRaster()` opts a page into decode caching, so rendering the same page at
+  multiple zoom levels doesn't redecode each time. Off by default — a cached raster is the page's
+  full uncompressed pixel grid, hundreds of MB for a large scan.
+- `TiffRenderMode.FOR_DISPLAY` (bilinear + mip minification) and `FOR_PRINT` (nearest-neighbor)
+  are genuinely different resampling paths, not just labels.
+- On Android, `TiffRenderer(ParcelFileDescriptor)` and
+  `TiffPage#render(Bitmap, Rect?, Matrix?, TiffRenderMode)` take the platform's own types
+  directly — no need to touch the cross-platform `TiffSource`/`TiffBitmap`/`TiffRect`/
+  `TiffTransform` wrappers at all.
+- JPEG-in-TIFF and WebP are supported via vendored [IJG libjpeg](https://www.ijg.org/) and
+  [libwebp](https://github.com/webmproject/libwebp); see [Native libraries](#native-libraries)
+  for exact pinned versions.
 
 ## Install
 
