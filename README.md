@@ -9,9 +9,8 @@ A Kotlin Multiplatform library for decoding and rendering TIFF images — **Andr
 JVM/desktop** — including multi-page/multi-directory TIFFs, on top of `libtiff`.
 
 ```kotlin
-val toolkit = TiffRenderer(TiffSource.fromFileDescriptor(fd, size)) // fd: an already-open, seekable file descriptor
-
-toolkit.use { renderer ->
+// fd: an already-open, seekable file descriptor
+TiffRenderer(TiffSource.fromFileDescriptor(fd, size)).use { renderer ->
     renderer.openPage(0).use { page ->
         val bitmap = createTiffBitmap(page.width, page.height)
         page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
