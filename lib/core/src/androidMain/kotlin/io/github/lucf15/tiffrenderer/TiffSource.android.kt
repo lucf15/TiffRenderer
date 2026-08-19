@@ -11,6 +11,7 @@ actual class TiffSource private constructor(
     internal val size: Long,
 ) {
     internal val fd: Int get() = pfd.fd
+    internal actual var consumed: Boolean = false
 
     actual fun release() {
         try {
@@ -26,7 +27,8 @@ actual class TiffSource private constructor(
         /** Android-only convenience: wrap an existing [ParcelFileDescriptor] directly, avoiding
          * an fd adopt/detach round-trip for callers (e.g. from a `ContentResolver`) that already
          * have one. Stats it to recover the size, since this entry point (unlike
-         * [fromFileDescriptor]) doesn't take one as a parameter. */
+         * [fromFileDescriptor]) doesn't take one as a parameter. Takes ownership: the owning
+         * [TiffRenderer]'s close path closes this [pfd] too, so don't reuse it afterward. */
         fun fromParcelFileDescriptor(pfd: ParcelFileDescriptor): TiffSource {
             val size = try {
                 Os.lseek(pfd.fileDescriptor, 0, OsConstants.SEEK_SET)

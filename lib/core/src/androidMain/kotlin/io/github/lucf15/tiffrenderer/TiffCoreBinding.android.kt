@@ -2,27 +2,30 @@ package io.github.lucf15.tiffrenderer
 
 import java.io.IOException
 
-actual class TiffCoreHandle internal constructor(internal val ptr: Long)
+/** [lock] serializes native calls made through this handle: libtiff's own error/warning callback
+ * writes to a thread_local buffer, so it doesn't need serializing, but a TIFF*'s directory cursor
+ * (mutated by e.g. TIFFSetDirectory) isn't safe for concurrent use from two threads at once.
+ * Scoped per document rather than process-wide so two unrelated [TiffRenderer]s don't block each
+ * other's decodes. */
+actual class TiffCoreHandle internal constructor(internal val ptr: Long) {
+    internal val lock: Any = Any()
+}
 
 /** Binds [TiffCoreBinding] to the JNI layer ([TiffRendererNative]). */
 internal actual object TiffCoreBinding {
     actual fun open(source: TiffSource): TiffCoreHandle =
-        TiffCoreHandle(
-            synchronized(sTiffLock) {
-                rethrowingIOException { TiffRendererNative.nativeOpen(source.fd, source.size) }
-            },
-        )
+        TiffCoreHandle(rethrowingIOException { TiffRendererNative.nativeOpen(source.fd, source.size) })
 
     actual fun close(handle: TiffCoreHandle) {
-        synchronized(sTiffLock) { TiffRendererNative.nativeClose(handle.ptr) }
+        synchronized(handle.lock) { TiffRendererNative.nativeClose(handle.ptr) }
     }
 
     actual fun getPageCount(handle: TiffCoreHandle): Int =
-        synchronized(sTiffLock) { TiffRendererNative.nativeGetPageCount(handle.ptr) }
+        synchronized(handle.lock) { TiffRendererNative.nativeGetPageCount(handle.ptr) }
 
     actual fun openPage(handle: TiffCoreHandle, index: Int): TiffCorePageSize {
         val outSize = IntArray(2)
-        synchronized(sTiffLock) {
+        synchronized(handle.lock) {
             rethrowingIOException { TiffRendererNative.nativeOpenPage(handle.ptr, index, outSize) }
         }
         return TiffCorePageSize(outSize[0], outSize[1])
@@ -47,7 +50,7 @@ internal actual object TiffCoreBinding {
             TiffRenderMode.FOR_DISPLAY -> 1
             TiffRenderMode.FOR_PRINT -> 2
         }
-        synchronized(sTiffLock) {
+        synchronized(handle.lock) {
             rethrowingIOException {
                 TiffRendererNative.nativeRenderPage(
                     handle.ptr, index, destination.bitmap,
@@ -59,18 +62,15 @@ internal actual object TiffCoreBinding {
     }
 
     actual fun retainRaster(handle: TiffCoreHandle, index: Int) {
-        synchronized(sTiffLock) {
+        synchronized(handle.lock) {
             rethrowingIOException { TiffRendererNative.nativeRetainRaster(handle.ptr, index) }
         }
     }
 
     actual fun releaseRaster(handle: TiffCoreHandle) {
-        synchronized(sTiffLock) { TiffRendererNative.nativeReleaseRaster(handle.ptr) }
+        synchronized(handle.lock) { TiffRendererNative.nativeReleaseRaster(handle.ptr) }
     }
 }
-
-/** Serializes all native calls: libtiff's error/warning handler state is process-global. */
-private val sTiffLock = Any()
 
 /** Routes native's plain `java.io.IOException` onto [TiffIOException]; `IllegalArgumentException`/
  * `IllegalStateException` already match the common API, so they propagate as-is. */

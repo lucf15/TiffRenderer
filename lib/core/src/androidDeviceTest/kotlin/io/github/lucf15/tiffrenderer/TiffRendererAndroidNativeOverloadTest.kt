@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
+import android.os.ParcelFileDescriptor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -26,6 +27,35 @@ class TiffRendererAndroidNativeOverloadTest {
     fun tiffBitmap_wrongBitmapConfig_throwsIllegalArgumentException() {
         val bitmap = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.RGB_565)
         assertThrows(IllegalArgumentException::class.java) { TiffBitmap(bitmap) }
+    }
+
+    @Test
+    fun tiffBitmap_recycledBitmap_throwsIllegalArgumentException() {
+        val bitmap = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
+        bitmap.recycle()
+        assertThrows(IllegalArgumentException::class.java) { TiffBitmap(bitmap) }
+    }
+
+    @Test
+    fun tiffBitmap_immutableBitmap_throwsIllegalArgumentException() {
+        val colors = IntArray(PAGE_WIDTH * PAGE_HEIGHT)
+        val bitmap = Bitmap.createBitmap(colors, PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
+        assertThrows(IllegalArgumentException::class.java) { TiffBitmap(bitmap) }
+    }
+
+    @Test
+    fun fromParcelFileDescriptor_nonSeekableFd_throwsIllegalArgumentException() {
+        val pipe = ParcelFileDescriptor.createPipe()
+        val readSide = pipe[0]
+        val writeSide = pipe[1]
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                TiffSource.fromParcelFileDescriptor(readSide)
+            }
+        } finally {
+            readSide.close()
+            writeSide.close()
+        }
     }
 
     @Test

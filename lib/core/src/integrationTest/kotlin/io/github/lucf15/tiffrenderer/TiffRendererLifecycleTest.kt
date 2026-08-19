@@ -94,6 +94,20 @@ class TiffRendererLifecycleTest {
     }
 
     @Test
+    fun constructor_sourceAlreadyConsumedBySuccessfulOpen_throwsIllegalStateException() {
+        val source = Fixtures.open("single_page_rgb.tif")
+        TiffRenderer(source).use { }
+        assertFailsWith<IllegalStateException> { TiffRenderer(source) }
+    }
+
+    @Test
+    fun constructor_sourceAlreadyConsumedByFailedOpen_throwsIllegalStateExceptionOnRetry() {
+        val source = Fixtures.open("not_a_tiff.bin")
+        assertFailsWith<TiffIOException> { TiffRenderer(source) }
+        assertFailsWith<IllegalStateException> { TiffRenderer(source) }
+    }
+
+    @Test
     fun page_indexWidthHeight_matchPerPageTiffTags() {
         open("varying_page_dimensions.tif").use { renderer ->
             val expectedSizes = arrayOf(10 to 10, 20 to 15, 8 to 40)
