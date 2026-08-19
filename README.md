@@ -348,8 +348,9 @@ Each library's copyright notice and license terms are reproduced in
 target: pick any TIFF via the system file picker (SAF on Android, `UIDocumentPickerViewController`
 on iOS, `JFileChooser` on desktop) and page through it in an edge-to-edge scrolling viewer.
 `sample/androidApp`, `sample/iosApp`, and `sample/desktopApp` are the three platform shells;
-`sample/shared` is the actual UI, shared between them. Run the iOS app on a simulator via
-`sample/run-ios-simulator.sh`; run the desktop app via `./gradlew :sample:desktopApp:run`.
+`sample/shared` is the actual UI, shared between them. Run the iOS app by opening
+`sample/iosApp/iosApp.xcodeproj` in Xcode and hitting Run; run the desktop app via
+`./gradlew :sample:desktopApp:run`.
 
 ## License
 

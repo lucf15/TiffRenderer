@@ -18,5 +18,8 @@ local.properties
 # Working notes for continuing this project across sessions — not meant for library consumers.
 /CLAUDE.md
 /DEVLOG.md
+
+# Internal dev convenience script, not meant for library consumers.
+/sample/run-ios-simulator.sh
 __pycache__/
 *.pyc
