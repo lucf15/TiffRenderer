@@ -79,6 +79,8 @@ val buildTiffRendererJniForJvm = tasks.register<Exec>("buildTiffRendererJniForJv
     group = "build"
     description = "Builds tiffrenderer_jni_jvm for the host OS/arch via CMake."
 
+    onlyIf { System.getenv("TIFFRENDERER_SKIP_JVM_NATIVE_BUILD") != "true" }
+
     val cppDir = file("src/main/cpp")
     val outputDir = layout.buildDirectory.dir("jvm/natives")
     val javaHome = System.getProperty("java.home")
