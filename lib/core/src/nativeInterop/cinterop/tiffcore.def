@@ -6,3 +6,4 @@
 package = tiffcore
 headers = tiff_core.h
 staticLibraries = libtiffrenderer_core.a libtiff.a libijg_jpeg.a libwebp.a libsharpyuv.a
+linkerOpts = -lz

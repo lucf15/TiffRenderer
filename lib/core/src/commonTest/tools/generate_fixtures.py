@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerates every fixture in androidDeviceTest/assets/ from scratch.
+"""Regenerates every fixture in commonTest/resources/ from scratch.
 
 Run from anywhere: `python3 generate_fixtures.py [output_dir]` (defaults to
-androidDeviceTest/assets/ relative to this file). Requires `tiffcp`/`tiffinfo` on PATH
+commonTest/resources/ relative to this file). Requires `tiffcp`/`tiffinfo` on PATH
 (Homebrew: `brew install libtiff`) for the codec-variant step; everything else is stdlib-only.
 
 One fixture this script does *not* produce, unsupported_lerc.tif, because `tiffcp` doesn't
@@ -20,7 +20,7 @@ import subprocess
 import sys
 
 DEFAULT_OUT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "assets"
+    os.path.dirname(os.path.abspath(__file__)), "..", "resources"
 )
 OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_OUT_DIR
 
@@ -156,6 +156,25 @@ def bilevel_checkerboard_page(width, height):
     }
 
 
+def checkerboard_rgb_page(width, height, cell, color_a, color_b):
+    row_a = bytes()
+    for x in range(width):
+        row_a += bytes(color_a if (x // cell) % 2 == 0 else color_b)
+    row_b = bytes()
+    for x in range(width):
+        row_b += bytes(color_b if (x // cell) % 2 == 0 else color_a)
+    pixel_bytes = bytearray()
+    for y in range(height):
+        pixel_bytes += row_a if (y // cell) % 2 == 0 else row_b
+    return {
+        "width": width,
+        "height": height,
+        "samples_per_pixel": 3,
+        "photometric": 2,
+        "pixel_bytes": bytes(pixel_bytes),
+    }
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -184,6 +203,14 @@ def main():
     write_tiff(
         os.path.join(OUT_DIR, "rgba_associated_alpha.tif"),
         [solid_rgba_page(40, 30, 255, 0, 0, 128)],
+    )
+
+    # Fine black/white checkerboard, for verifying minification actually blends the source
+    # footprint instead of just picking whichever few source pixels sampleBilinear/sampleNearest
+    # happens to look at.
+    write_tiff(
+        os.path.join(OUT_DIR, "checkerboard_fine.tif"),
+        [checkerboard_rgb_page(250, 250, 6, (0, 0, 0), (255, 255, 255))],
     )
 
     # --- Corrupt / hostile fixtures --------------------------------------------------------------

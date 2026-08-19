@@ -1,0 +1,5 @@
+{
+  "name": "tiffrenderer-native",
+  "version": "1.0.0",
+  "dependencies": ["zlib"]
+}

@@ -9,16 +9,16 @@ version = System.getenv("VERSION") ?: "0.1.0-SNAPSHOT"
 
 android {
     namespace = "io.github.lucf15.tiffrenderer.nativelib"
-    compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    compileSdk = libs.versions.androidCompileSdk.get().toInt()
+    ndkVersion = libs.versions.androidNdk.get()
 
     defaultConfig {
-        minSdk = 24
+        minSdk = libs.versions.androidMinSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {
             cmake {
-                arguments += listOf("-DANDROID_STL=c++_shared")
+                arguments += listOf("-DANDROID_STL=c++_static")
             }
         }
 
@@ -32,7 +32,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+            version = libs.versions.cmake.get()
         }
     }
 
@@ -44,8 +44,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.toVersion(libs.versions.jvmToolchain.get())
+        targetCompatibility = JavaVersion.toVersion(libs.versions.jvmToolchain.get())
     }
 
     buildFeatures {

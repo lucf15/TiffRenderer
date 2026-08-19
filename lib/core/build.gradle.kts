@@ -4,20 +4,23 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.maven.publish)
+    alias(libs.plugins.kotlinx.resources)
 }
 
 group = "io.github.lucf15"
 version = System.getenv("VERSION") ?: "0.1.0-SNAPSHOT"
 
 kotlin {
+    applyDefaultHierarchyTemplate()
+
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 
     android {
         namespace = "io.github.lucf15.tiffrenderer.core"
-        compileSdk = 36
-        minSdk = 24
+        compileSdk = libs.versions.androidCompileSdk.get().toInt()
+        minSdk = libs.versions.androidMinSdk.get().toInt()
         withHostTest {}
         withDeviceTest {}
     }
@@ -51,13 +54,29 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
+
+        val integrationTest = create("integrationTest") {
+            dependsOn(commonTest.get())
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.kotlinx.resources)
+            }
+        }
+
         jvmTest.dependencies {
             implementation(kotlin("test"))
         }
-        getByName("androidDeviceTest").dependencies {
-            implementation(libs.junit)
-            implementation(libs.androidx.test.runner)
-            implementation(libs.androidx.test.ext.junit)
+        jvmTest.get().dependsOn(integrationTest)
+
+        matching { it.name == "iosTest" }.configureEach { dependsOn(integrationTest) }
+
+        getByName("androidDeviceTest") {
+            dependsOn(integrationTest)
+            dependencies {
+                implementation(libs.junit)
+                implementation(libs.androidx.test.runner)
+                implementation(libs.androidx.test.ext.junit)
+            }
         }
     }
 }

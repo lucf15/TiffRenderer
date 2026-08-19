@@ -10,3 +10,8 @@ expect class TiffBitmap {
 /** Allocates a fresh, blank [TiffBitmap] as a top-level factory, since each `actual`'s
  * constructor shape differs. */
 expect fun createTiffBitmap(width: Int, height: Int): TiffBitmap
+
+/** A packed `0xAARRGGBB` int, [android.graphics.Color]'s convention: each `actual` reorders its
+ * own native pixel layout to match, so cross-platform test assertions don't need to know which
+ * platform they're running on. */
+internal expect fun TiffBitmap.pixelAt(x: Int, y: Int): Int

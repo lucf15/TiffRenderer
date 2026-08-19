@@ -19,3 +19,5 @@ fun TiffBitmap.asAndroidBitmap(): Bitmap = bitmap
 
 actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap =
     TiffBitmap(Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888))
+
+internal actual fun TiffBitmap.pixelAt(x: Int, y: Int): Int = bitmap.getPixel(x, y)

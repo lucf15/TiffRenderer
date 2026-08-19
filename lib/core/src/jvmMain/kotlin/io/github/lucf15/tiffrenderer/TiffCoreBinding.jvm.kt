@@ -8,7 +8,18 @@ actual class TiffCoreHandle internal constructor(internal val ptr: Long)
 internal actual object TiffCoreBinding {
     actual fun open(source: TiffSource): TiffCoreHandle =
         TiffCoreHandle(
-            synchronized(sTiffLock) { rethrowingIOException { TiffRendererNativeJvm.nativeOpen(source.path) } },
+            synchronized(sTiffLock) {
+                rethrowingIOException {
+                    val bytes = source.bytes
+                    if (bytes != null) {
+                        val handle = TiffRendererNativeJvm.nativeOpenBytes(bytes)
+                        source.bytes = null
+                        handle
+                    } else {
+                        TiffRendererNativeJvm.nativeOpen(checkNotNull(source.path))
+                    }
+                }
+            },
         )
 
     actual fun close(handle: TiffCoreHandle) {

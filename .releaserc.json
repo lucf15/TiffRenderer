@@ -4,7 +4,8 @@
     ["@semantic-release/commit-analyzer", {
       "preset": "angular",
       "releaseRules": [
-        { "type": "chore", "scope": "libtiff", "release": "patch" }
+        { "type": "chore", "scope": "libtiff", "release": "patch" },
+        { "type": "chore", "scope": "libwebp", "release": "patch" }
       ],
       "parserOpts": {
         "headerPattern": "^(\\w*)(?:\\((.*)\\))?(!)?: (.*)$",

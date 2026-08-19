@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(NOT MSVC)
+    add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden)
+endif()
+
 if(UNIX AND NOT APPLE AND NOT ANDROID)
     find_library(TIFFRENDERER_SHARED_ZLIB NAMES libz.so)
     if(TIFFRENDERER_SHARED_ZLIB)
@@ -84,11 +88,6 @@ target_include_directories(ijg_jpeg PUBLIC
     third_party/libjpeg
     jconfig
 )
-if(WIN32)
-    # HAVE_BOOLEAN avoids jmorecfg.h's boolean typedef colliding with Windows' rpcndr.h; INTERFACE-only since ijg_jpeg's own sources never include windows.h.
-    target_compile_definitions(ijg_jpeg INTERFACE HAVE_BOOLEAN)
-endif()
-
 # Alias to the name libtiff's JPEGCodec.cmake/find_package(JPEG) expects, since it can't see this in-tree target directly.
 add_library(JPEG::JPEG ALIAS ijg_jpeg)
 set(JPEG_FOUND TRUE CACHE BOOL "" FORCE)
@@ -148,6 +147,7 @@ if(ANDROID)
     )
 
     target_compile_options(tiffrenderer_jni PRIVATE -Wall -Wextra)
+    target_link_options(tiffrenderer_jni PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.map")
 endif()
 
 # --- JNI wrapper (desktop JVM only): raw jintArray pixels, jni.h from the JDK via find_package(JNI) ---
@@ -162,5 +162,10 @@ if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_link_libraries(tiffrenderer_jni_jvm PRIVATE tiffrenderer_core)
     if(NOT MSVC)
         target_compile_options(tiffrenderer_jni_jvm PRIVATE -Wall -Wextra)
+    endif()
+    if(APPLE)
+        target_link_options(tiffrenderer_jni_jvm PRIVATE "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.macos.txt")
+    elseif(UNIX)
+        target_link_options(tiffrenderer_jni_jvm PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.map")
     endif()
 endif()

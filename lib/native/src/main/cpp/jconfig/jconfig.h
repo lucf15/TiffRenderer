@@ -26,3 +26,19 @@
 #ifdef JPEG_INTERNALS
 #undef RIGHT_SHIFT_IS_UNSIGNED
 #endif
+
+#ifdef _WIN32
+/* Every translation unit that includes jpeglib.h picks this file up (jpeglib.h #includes
+ * "jconfig.h" directly), so defining boolean here once is what actually guarantees libjpeg's own
+ * compiled objects and any external caller (e.g. libtiff's tif_jpeg.c) agree on its size --
+ * leaving it to whichever windows.h/rpcndr.h a given caller happens to transitively pull in is
+ * what previously produced a real "library thinks size is 664, caller expects 632" mismatch. */
+#define HAVE_BOOLEAN
+typedef unsigned char boolean;
+#ifndef FALSE
+#define FALSE 0
+#endif
+#ifndef TRUE
+#define TRUE 1
+#endif
+#endif

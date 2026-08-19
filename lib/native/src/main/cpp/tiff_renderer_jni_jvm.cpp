@@ -102,6 +102,32 @@ jlong nativeOpen(JNIEnv* env, jclass /*clazz*/, jstring path) {
     return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
 }
 
+jlong nativeOpenBytes(JNIEnv* env, jclass /*clazz*/, jbyteArray bytes) {
+    if (bytes == nullptr) {
+        throwException(env, "java/lang/IllegalArgumentException", "bytes cannot be null");
+        return 0;
+    }
+    const jsize length = env->GetArrayLength(bytes);
+
+    jbyte* data = env->GetByteArrayElements(bytes, nullptr);
+    if (data == nullptr) {
+        return 0;
+    }
+
+    TiffCoreDocument* doc = nullptr;
+    char errBuf[kErrBufSize] = {};
+    const TiffCoreStatus status = tiffcore_open_memory(reinterpret_cast<const uint8_t*>(data),
+            static_cast<int64_t>(length), &doc, errBuf, sizeof(errBuf));
+
+    env->ReleaseByteArrayElements(bytes, data, JNI_ABORT);
+
+    if (status != TIFFCORE_OK) {
+        throwForStatus(env, status, errBuf, "cannot open TIFF");
+        return 0;
+    }
+    return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
+}
+
 void nativeClose(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
     if (documentPtr == 0) {
         return;
@@ -155,7 +181,13 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
                 "matrixValues must have 6 elements");
         return;
     }
-    if (env->GetArrayLength(destination) < dstWidth * dstHeight) {
+    if (dstWidth <= 0 || dstHeight <= 0) {
+        throwException(env, "java/lang/IllegalArgumentException",
+                "dstWidth/dstHeight must be positive");
+        return;
+    }
+    const int64_t requiredLength = static_cast<int64_t>(dstWidth) * static_cast<int64_t>(dstHeight);
+    if (env->GetArrayLength(destination) < requiredLength) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "destination smaller than dstWidth * dstHeight");
         return;
@@ -164,7 +196,7 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
     jfloat matrix[6];
     env->GetFloatArrayRegion(matrixValues, 0, 6, matrix);
 
-    jint* pixels = env->GetIntArrayElements(destination, nullptr);
+    jint* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination, nullptr));
     if (pixels == nullptr) {
         return;
     }
@@ -175,7 +207,7 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
             clipRight, clipBottom, matrix, static_cast<TiffCoreRenderMode>(renderMode), errBuf,
             sizeof(errBuf));
 
-    env->ReleaseIntArrayElements(destination, pixels, status == TIFFCORE_OK ? 0 : JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(destination, pixels, status == TIFFCORE_OK ? 0 : JNI_ABORT);
 
     if (status != TIFFCORE_OK) {
         throwForStatus(env, status, errBuf, "failed to render TIFF page");
@@ -203,6 +235,7 @@ void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
 
 const JNINativeMethod gMethods[] = {
         {"nativeOpen", "(Ljava/lang/String;)J", reinterpret_cast<void*>(nativeOpen)},
+        {"nativeOpenBytes", "([B)J", reinterpret_cast<void*>(nativeOpenBytes)},
         {"nativeClose", "(J)V", reinterpret_cast<void*>(nativeClose)},
         {"nativeGetPageCount", "(J)I", reinterpret_cast<void*>(nativeGetPageCount)},
         {"nativeOpenPage", "(JI[I)V", reinterpret_cast<void*>(nativeOpenPage)},

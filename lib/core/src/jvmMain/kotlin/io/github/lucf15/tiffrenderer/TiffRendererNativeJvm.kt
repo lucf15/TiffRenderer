@@ -13,6 +13,8 @@ internal object TiffRendererNativeJvm {
 
     external fun nativeOpen(path: String): Long
 
+    external fun nativeOpenBytes(bytes: ByteArray): Long
+
     external fun nativeClose(documentPtr: Long)
 
     external fun nativeGetPageCount(documentPtr: Long): Int
