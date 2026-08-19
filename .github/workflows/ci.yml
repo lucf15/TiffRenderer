@@ -91,6 +91,13 @@ jobs:
           disable-animations: true
           script: ./gradlew :lib:core:connectedAndroidDeviceTest
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-cache-android
+          path: ${{ env.HOME }}/.gradle/caches/build-cache-1
+          if-no-files-found: warn
+          retention-days: 1
+
   build-jvm:
     needs: validate-wrapper
     strategy:
@@ -162,6 +169,13 @@ jobs:
 
       - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-cache-ios
+          path: ${{ env.HOME }}/.gradle/caches/build-cache-1
+          if-no-files-found: warn
+          retention-days: 1
+
   semantic-release:
     needs: [build-android, build-jvm, build-ios]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -227,6 +241,14 @@ jobs:
           pattern: jvm-natives-*
           path: lib/native/build/jvm/natives
           merge-multiple: true
+
+      - name: Reuse the Gradle build cache from build-android/build-ios
+        uses: actions/download-artifact@v4
+        with:
+          pattern: gradle-build-cache-*
+          path: ${{ env.HOME }}/.gradle/caches/build-cache-1
+          merge-multiple: true
+          if-no-files-found: warn
 
       - name: Publish to Maven Central
         env:
