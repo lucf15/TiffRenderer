@@ -101,11 +101,22 @@ if [[ "$OS_NAME" == "windows" ]]; then
   build_dir_win="$(cd "$build_dir" && pwd -W)"
   script_dir_win="$(cd "$SCRIPT_DIR" && pwd -W)"
 
+  case "$ARCH_NAME" in
+    x86_64) VCPKG_TRIPLET="x64-windows-static"; VCPKG_HOST_TRIPLET="x64-windows" ;;
+    aarch64) VCPKG_TRIPLET="arm64-windows-static"; VCPKG_HOST_TRIPLET="arm64-windows" ;;
+  esac
+  VCPKG_CMAKE_ARGS=""
+  if [[ -n "${VCPKG_INSTALLATION_ROOT:-}" ]]; then
+    VCPKG_CMAKE_ARGS="\"-DCMAKE_TOOLCHAIN_FILE=%VCPKG_INSTALLATION_ROOT%\\scripts\\buildsystems\\vcpkg.cmake\" -DVCPKG_TARGET_TRIPLET=${VCPKG_TRIPLET} -DVCPKG_HOST_TRIPLET=${VCPKG_HOST_TRIPLET} -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+  fi
+
+  JAVA_HOME_FORWARD_SLASHES="${JAVA_HOME_OVERRIDE//\\//}"
+
   wrapper_bat="${build_dir}/configure_and_build.bat"
   cat > "$wrapper_bat" <<BATEOF
 call "${VS_INSTALL_PATH}\\VC\\Auxiliary\\Build\\vcvarsall.bat" ${VCVARSALL_ARG}
 if errorlevel 1 exit /b 1
-cmake -G "NMake Makefiles" -S "${script_dir_win}" -B "${build_dir_win}" -DJAVA_HOME="${JAVA_HOME_OVERRIDE}" -DCMAKE_BUILD_TYPE=Release
+cmake -G "NMake Makefiles" -S "${script_dir_win}" -B "${build_dir_win}" -DJAVA_HOME="${JAVA_HOME_FORWARD_SLASHES}" -DCMAKE_BUILD_TYPE=Release ${VCPKG_CMAKE_ARGS}
 if errorlevel 1 exit /b 1
 cmake --build "${build_dir_win}" --target tiffrenderer_jni_jvm --config Release
 if errorlevel 1 exit /b 1
@@ -122,6 +133,10 @@ else
         x86_64) CMAKE_ARCH_ARGS=(-DCMAKE_OSX_ARCHITECTURES=x86_64) ;;
         aarch64) CMAKE_ARCH_ARGS=(-DCMAKE_OSX_ARCHITECTURES=arm64) ;;
       esac
+      CMAKE_ARCH_ARGS+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
+      ;;
+    linux)
+      CMAKE_ARCH_ARGS=("-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
       ;;
   esac
   "$CMAKE_BIN" -S "$SCRIPT_DIR" -B "$build_dir" -DJAVA_HOME="$JAVA_HOME_OVERRIDE" -DCMAKE_BUILD_TYPE=Release "${CMAKE_ARCH_ARGS[@]}"

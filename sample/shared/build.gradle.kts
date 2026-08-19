@@ -13,8 +13,8 @@ kotlin {
 
     android {
         namespace = "io.github.lucf15.tiffrenderer.sample.shared"
-        compileSdk = 36
-        minSdk = 24
+        compileSdk = libs.versions.androidCompileSdk.get().toInt()
+        minSdk = libs.versions.androidMinSdk.get().toInt()
     }
 
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->

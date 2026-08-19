@@ -18,6 +18,7 @@
 
 #include <tiffio.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -144,18 +145,68 @@ uint32_t sampleBilinear(const uint32_t* raster, int srcWidth, int srcHeight, flo
     return toByte(r) | (toByte(g) << 8) | (toByte(b) << 16) | (toByte(a) << 24);
 }
 
+// Halves a raster via 2x2 premultiplied box averaging (odd dimensions round up, duplicating the
+// last row/column); one mip level of the pyramid tiffcore_render_page builds for minification.
+std::vector<uint32_t> halveRaster(const uint32_t* src, int srcWidth, int srcHeight, int* outWidth,
+        int* outHeight) {
+    const int dstWidth = (srcWidth + 1) / 2;
+    const int dstHeight = (srcHeight + 1) / 2;
+    std::vector<uint32_t> dst(static_cast<size_t>(dstWidth) * static_cast<size_t>(dstHeight));
+
+    for (int dy = 0; dy < dstHeight; dy++) {
+        const int sy0 = dy * 2;
+        const int sy1 = sy0 + 1 < srcHeight ? sy0 + 1 : sy0;
+        for (int dx = 0; dx < dstWidth; dx++) {
+            const int sx0 = dx * 2;
+            const int sx1 = sx0 + 1 < srcWidth ? sx0 + 1 : sx0;
+
+            float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
+            auto accumulate = [&](int px, int py) {
+                const uint32_t p = src[static_cast<size_t>(py) * srcWidth + px];
+                const float pa = static_cast<float>((p >> 24) & 0xff);
+                const float scale = pa / 255.0f;
+                r += static_cast<float>(p & 0xff) * scale;
+                g += static_cast<float>((p >> 8) & 0xff) * scale;
+                b += static_cast<float>((p >> 16) & 0xff) * scale;
+                a += pa;
+            };
+            accumulate(sx0, sy0);
+            accumulate(sx1, sy0);
+            accumulate(sx0, sy1);
+            accumulate(sx1, sy1);
+
+            r *= 0.25f;
+            g *= 0.25f;
+            b *= 0.25f;
+            a *= 0.25f;
+            if (a > 0.0f) {
+                const float invA = 255.0f / a;
+                r *= invA;
+                g *= invA;
+                b *= invA;
+            }
+            auto toByte = [](float v) { return static_cast<uint32_t>(clampFloat(v + 0.5f, 0.0f, 255.0f)); };
+            dst[static_cast<size_t>(dy) * static_cast<size_t>(dstWidth) + dx] =
+                    toByte(r) | (toByte(g) << 8) | (toByte(b) << 16) | (toByte(a) << 24);
+        }
+    }
+    *outWidth = dstWidth;
+    *outHeight = dstHeight;
+    return dst;
+}
+
 }  // namespace
 
+// Picks the matching close function for whatever TIFFClientOpen client-data type tiff was opened
+// with: FdHandle* (kFd), MemHandle* (kMemory), or libtiff's own stdio state (kPath).
+enum class TiffIoKind { kPath, kFd, kMemory };
+
 // Holds the TIFF* plus an optional single-page raster cache for tiffcore_retain_raster().
-// customIo distinguishes the two ways tiff was opened: tiffcore_open's TIFFClientOpen bound to a
-// raw fd (client data is a tiffrenderer::FdHandle*, freed by tiffrenderer::closeTiff) vs.
-// tiffcore_open_path[_w]'s plain TIFFOpen/TIFFOpenW (libtiff owns its own stdio state; a plain
-// TIFFClose is correct and closeTiff would misinterpret the client data as an FdHandle*).
 struct TiffCoreDocument {
-    TiffCoreDocument(TIFF* t, bool customIo) : tiff(t), customIo(customIo) {}
+    TiffCoreDocument(TIFF* t, TiffIoKind ioKind) : tiff(t), ioKind(ioKind) {}
 
     TIFF* tiff;
-    bool customIo;
+    TiffIoKind ioKind;
     int32_t cachedPageIndex = -1;
     uint32_t cachedWidth = 0;
     uint32_t cachedHeight = 0;
@@ -212,21 +263,31 @@ void tiffcore_global_init(void) {
 
 namespace {
 
-TiffCoreStatus wrapOpenedTiff(TIFF* tiff, bool customIo, TiffCoreDocument** outDoc, char* errBuf,
-        size_t errBufLen) {
+void closeByKind(TIFF* tiff, TiffIoKind ioKind) {
+    switch (ioKind) {
+        case TiffIoKind::kFd:
+            tiffrenderer::closeTiff(tiff);
+            break;
+        case TiffIoKind::kMemory:
+            tiffrenderer::closeMemoryTiff(tiff);
+            break;
+        case TiffIoKind::kPath:
+            TIFFClose(tiff);
+            break;
+    }
+}
+
+TiffCoreStatus wrapOpenedTiff(TIFF* tiff, TiffIoKind ioKind, TiffCoreDocument** outDoc,
+        char* errBuf, size_t errBufLen) {
     if (tiff == nullptr) {
         fillErrBuf(errBuf, errBufLen, "cannot open TIFF");
         return TIFFCORE_ERROR_IO;
     }
     try {
-        *outDoc = new TiffCoreDocument(tiff, customIo);
+        *outDoc = new TiffCoreDocument(tiff, ioKind);
         return TIFFCORE_OK;
     } catch (const std::exception&) {
-        if (customIo) {
-            tiffrenderer::closeTiff(tiff);
-        } else {
-            TIFFClose(tiff);
-        }
+        closeByKind(tiff, ioKind);
         fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
         return TIFFCORE_ERROR_IO;
     }
@@ -244,14 +305,14 @@ TiffCoreStatus tiffcore_open(int fd, int64_t size, TiffCoreDocument** outDoc, ch
         fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
         return TIFFCORE_ERROR_IO;
     }
-    return wrapOpenedTiff(tiff, /*customIo=*/true, outDoc, errBuf, errBufLen);
+    return wrapOpenedTiff(tiff, TiffIoKind::kFd, outDoc, errBuf, errBufLen);
 }
 
 TiffCoreStatus tiffcore_open_path(const char* utf8Path, TiffCoreDocument** outDoc, char* errBuf,
         size_t errBufLen) {
     gLastError.clear();
     TIFF* tiff = TIFFOpen(utf8Path, "r");
-    return wrapOpenedTiff(tiff, /*customIo=*/false, outDoc, errBuf, errBufLen);
+    return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
 }
 
 #ifdef _WIN32
@@ -259,19 +320,28 @@ TiffCoreStatus tiffcore_open_path_w(const wchar_t* utf16Path, TiffCoreDocument**
         char* errBuf, size_t errBufLen) {
     gLastError.clear();
     TIFF* tiff = TIFFOpenW(utf16Path, "r");
-    return wrapOpenedTiff(tiff, /*customIo=*/false, outDoc, errBuf, errBufLen);
+    return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
 }
 #endif
+
+TiffCoreStatus tiffcore_open_memory(const uint8_t* data, int64_t size, TiffCoreDocument** outDoc,
+        char* errBuf, size_t errBufLen) {
+    gLastError.clear();
+    TIFF* tiff = nullptr;
+    try {
+        tiff = tiffrenderer::openFromMemory(data, size);
+    } catch (const std::exception&) {
+        fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
+        return TIFFCORE_ERROR_IO;
+    }
+    return wrapOpenedTiff(tiff, TiffIoKind::kMemory, outDoc, errBuf, errBufLen);
+}
 
 void tiffcore_close(TiffCoreDocument* doc) {
     if (doc == nullptr) {
         return;
     }
-    if (doc->customIo) {
-        tiffrenderer::closeTiff(doc->tiff);
-    } else {
-        TIFFClose(doc->tiff);
-    }
+    closeByKind(doc->tiff, doc->ioKind);
     delete doc;
 }
 
@@ -392,6 +462,32 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
     const int iSrcHeight = static_cast<int>(srcHeight);
     const bool bilinear = renderMode == TIFFCORE_RENDER_MODE_DISPLAY;
 
+    // Minification (scale < 1 on either axis) needs a pre-downsampled mip level, not just a
+    // smaller sample window into the full-res raster: sampleBilinear/sampleNearest only ever look
+    // at 4 (or 1) source pixels around one point, regardless of how many source pixels an output
+    // pixel actually covers, so without this a large scan shrunk into a small view aliases badly.
+    const float scaleX = std::sqrt(matrix[0] * matrix[0] + matrix[3] * matrix[3]);
+    const float scaleY = std::sqrt(matrix[1] * matrix[1] + matrix[4] * matrix[4]);
+    const float minScale = std::min(scaleX, scaleY);
+    int mipLevels = 0;
+    if (minScale > 0.0f && minScale < 1.0f) {
+        mipLevels = static_cast<int>(std::floor(std::log2(1.0f / minScale)));
+    }
+    std::vector<uint32_t> mipBuffer;
+    const uint32_t* sampleRaster = srcRaster;
+    int sampleWidth = iSrcWidth;
+    int sampleHeight = iSrcHeight;
+    float mipScale = 1.0f;
+    for (int level = 0; level < mipLevels && (sampleWidth > 1 || sampleHeight > 1); level++) {
+        int nextWidth;
+        int nextHeight;
+        mipBuffer = halveRaster(sampleRaster, sampleWidth, sampleHeight, &nextWidth, &nextHeight);
+        sampleRaster = mipBuffer.data();
+        sampleWidth = nextWidth;
+        sampleHeight = nextHeight;
+        mipScale *= 2.0f;
+    }
+
     for (int32_t y = clipTop; y < clipBottom; y++) {
         for (int32_t x = clipLeft; x < clipRight; x++) {
             float srcX;
@@ -403,9 +499,11 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
                 // as PdfRenderer.Page#render).
                 continue;
             }
+            const float sampleX = srcX / mipScale;
+            const float sampleY = srcY / mipScale;
             dstPixels[y * dstStridePixels + x] = bilinear
-                    ? sampleBilinear(srcRaster, iSrcWidth, iSrcHeight, srcX, srcY)
-                    : sampleNearest(srcRaster, iSrcWidth, iSrcHeight, srcX, srcY);
+                    ? sampleBilinear(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY)
+                    : sampleNearest(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY);
         }
     }
 

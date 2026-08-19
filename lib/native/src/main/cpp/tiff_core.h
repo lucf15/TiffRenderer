@@ -65,6 +65,12 @@ TiffCoreStatus tiffcore_open_path_w(const wchar_t* utf16Path, TiffCoreDocument**
         char* errBuf, size_t errBufLen);
 #endif
 
+// Opens a TIFF from an in-memory buffer (e.g. a classpath resource or an already-downloaded
+// response body); data is copied internally, so the caller's buffer can be freed/reused
+// immediately after this returns. Same failure contract as tiffcore_open.
+TiffCoreStatus tiffcore_open_memory(const uint8_t* data, int64_t size, TiffCoreDocument** outDoc,
+        char* errBuf, size_t errBufLen);
+
 // Frees doc and its libtiff handle; a no-op if doc is null. Does not touch the fd.
 void tiffcore_close(TiffCoreDocument* doc);
 

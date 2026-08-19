@@ -29,6 +29,14 @@ TIFF* openFromFd(int fd, int64_t size);
 // Frees the bookkeeping struct stashed in the TIFF*'s client data; doesn't touch the fd.
 void closeTiff(TIFF* tiff);
 
+// Opens a TIFF over an in-memory buffer; data is copied into an internally-owned buffer, so the
+// caller's buffer can be freed/reused immediately after this returns. Portable (no fd/HANDLE
+// needed), unlike openFromFd -- works identically on every platform, including Windows.
+TIFF* openFromMemory(const uint8_t* data, int64_t size);
+
+// Frees the bookkeeping struct (and its owned buffer copy) stashed in the TIFF*'s client data.
+void closeMemoryTiff(TIFF* tiff);
+
 }  // namespace tiffrenderer
 
 #endif  // TIFFRENDERER_TIFF_IO_H

@@ -2,6 +2,7 @@ package io.github.lucf15.tiffrenderer.sample.shared.navigation
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -34,7 +35,7 @@ fun MainNavigation(modifier: Modifier = Modifier) {
                 }
                 entry<Viewer> { key ->
                     ViewerScreen(
-                        source = openTiffSource(key.uri),
+                        source = remember(key.uri) { openTiffSource(key.uri) },
                         onBack = { backStack.removeLastOrNull() },
                         modifier = Modifier.fillMaxSize(),
                     )

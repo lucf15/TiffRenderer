@@ -16,6 +16,10 @@
 
 #include "tiff_io.h"
 
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
 // Windows has no POSIX read()/lseek()/errno-style fd (and the JVM desktop JNI shim never calls
 // these on that platform anyway, using tiffcore_open_path[_w] instead): stub them out there rather
 // than pulling in unistd.h, so tiffrenderer_core still compiles for the Windows JVM native leg.
@@ -96,5 +100,77 @@ void closeTiff(TIFF* tiff) {
 }
 
 #endif  // _WIN32
+
+namespace {
+
+struct MemHandle {
+    std::vector<uint8_t> buffer;
+    toff_t pos = 0;
+};
+
+tsize_t memReadProc(thandle_t handle, tdata_t buf, tsize_t size) {
+    auto* h = reinterpret_cast<MemHandle*>(handle);
+    const toff_t remaining = h->buffer.size() > h->pos ? h->buffer.size() - h->pos : 0;
+    const tsize_t n = static_cast<tsize_t>(static_cast<toff_t>(size) < remaining
+            ? static_cast<toff_t>(size) : remaining);
+    if (n > 0) {
+        std::memcpy(buf, h->buffer.data() + h->pos, n);
+        h->pos += n;
+    }
+    return n;
+}
+
+tsize_t memWriteProc(thandle_t /*handle*/, tdata_t /*buf*/, tsize_t /*size*/) {
+    // Read-only wrapper; TIFFClientOpen requires a non-null write proc even though it's never called.
+    return static_cast<tsize_t>(-1);
+}
+
+toff_t memSeekProc(thandle_t handle, toff_t offset, int whence) {
+    auto* h = reinterpret_cast<MemHandle*>(handle);
+    toff_t newPos;
+    switch (whence) {
+        case SEEK_SET: newPos = offset; break;
+        case SEEK_CUR: newPos = h->pos + offset; break;
+        case SEEK_END: newPos = static_cast<toff_t>(h->buffer.size()) + offset; break;
+        default: return static_cast<toff_t>(-1);
+    }
+    h->pos = newPos;
+    return newPos;
+}
+
+int memCloseProc(thandle_t /*handle*/) {
+    // No-op: closeMemoryTiff() frees MemHandle after TIFFClose() finishes.
+    return 0;
+}
+
+toff_t memSizeProc(thandle_t handle) {
+    return static_cast<toff_t>(reinterpret_cast<MemHandle*>(handle)->buffer.size());
+}
+
+int memMapFileProc(thandle_t /*handle*/, tdata_t* /*paddr*/, toff_t* /*psize*/) {
+    return 0;
+}
+
+void memUnmapFileProc(thandle_t /*handle*/, tdata_t /*addr*/, toff_t /*size*/) {}
+
+}  // namespace
+
+TIFF* openFromMemory(const uint8_t* data, int64_t size) {
+    auto* handle = new MemHandle();
+    handle->buffer.assign(data, data + size);
+    TIFF* tiff = TIFFClientOpen("TiffRenderer", "r", reinterpret_cast<thandle_t>(handle),
+            memReadProc, memWriteProc, memSeekProc, memCloseProc, memSizeProc, memMapFileProc,
+            memUnmapFileProc);
+    if (tiff == nullptr) {
+        delete handle;
+    }
+    return tiff;
+}
+
+void closeMemoryTiff(TIFF* tiff) {
+    auto* handle = reinterpret_cast<MemHandle*>(TIFFClientdata(tiff));
+    TIFFClose(tiff);
+    delete handle;
+}
 
 }  // namespace tiffrenderer

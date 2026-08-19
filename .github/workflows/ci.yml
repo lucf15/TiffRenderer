@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
     paths-ignore:
       - "README.md"
       - "LICENSE"
@@ -21,7 +20,7 @@ concurrency:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +45,43 @@ jobs:
           name: lib-debug-aar
           path: lib/core/build/outputs/aar/core.aar
           if-no-files-found: error
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-34-google_apis-x86_64
+
+      - name: Create AVD snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run instrumented test suite
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew :lib:core:connectedAndroidDeviceTest
 
   build-jvm:
     strategy:
@@ -90,28 +126,7 @@ jobs:
           brew install cmake
           echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
 
-      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:compileKotlinIosSimulatorArm64
-
-  release:
-    needs: [build-android, build-jvm, build-ios]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: sample-debug-apk
-          path: release-assets
-
-      - name: Rename artifact to include the tag
-        run: mv release-assets/androidApp-debug.apk "release-assets/tiffrenderer-sample-${GITHUB_REF_NAME}.apk"
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: release-assets/*
-          generate_release_notes: true
+      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test
 
   semantic-release:
     needs: [build-android, build-jvm, build-ios]

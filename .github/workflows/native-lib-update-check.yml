@@ -129,7 +129,11 @@ jobs:
         run: |
           old_version="${{ needs.check.outputs.current_tag }}"
           new_version="${{ needs.check.outputs.new_tag }}"
-          sed -i "s/${old_version#v}/${new_version#v}/g" README.md
+          if [ -z "$old_version" ]; then
+            echo "current_tag is empty (submodule wasn't checked out at an exact tag); refusing to guess which version to replace" >&2
+            exit 1
+          fi
+          sed -i "/\[${{ inputs.library_name }}\]/ s/${old_version#v}/${new_version#v}/" README.md
 
       - name: Open PR
         id: pr

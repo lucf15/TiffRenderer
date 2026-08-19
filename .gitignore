@@ -18,3 +18,5 @@ local.properties
 # Working notes for continuing this project across sessions — not meant for library consumers.
 /CLAUDE.md
 /DEVLOG.md
+__pycache__/
+*.pyc

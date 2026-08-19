@@ -1,50 +1,71 @@
 # TiffRenderer
 
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.lucf15/tiffrenderer.svg)](https://central.sonatype.com/artifact/io.github.lucf15/tiffrenderer)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20JVM-blue)](#requirements)
+[![CI](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml/badge.svg)](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 A Kotlin Multiplatform library for decoding and rendering TIFF images — **Android, iOS, and
-JVM/desktop** — including multi-page/multi-directory TIFFs. Built on top of
-[libtiff](http://libtiff.org/) (with JPEG-in-TIFF and WebP support via vendored
-[IJG libjpeg](https://www.ijg.org/) and [libwebp](https://github.com/webmproject/libwebp)),
-cross-compiled per platform behind one shared, platform-neutral C++ decode/resample core (Android
-NDK/JNI, Xcode/Kotlin-Native cinterop on iOS, plain JNI on JVM desktop), so decode and render
-behavior is identical across all three. See [Native libraries](#native-libraries) below for exact
-pinned versions.
+JVM/desktop** — including multi-page/multi-directory TIFFs, on top of `libtiff`.
 
 ```kotlin
-// Common API, identical on every platform. `fd`/`size` describe an already-open,
-// already-owned, seekable file descriptor.
-TiffRenderer(TiffSource.fromFileDescriptor(fd, size)).use { renderer ->
-    for (i in 0 until renderer.pageCount) {
-        renderer.openPage(i).use { page ->
-            val bitmap = createTiffBitmap(page.width, page.height)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
-            // Android: bitmap.asAndroidBitmap(); iOS/JVM: bitmap.toIntArray() or your own bridge
-        }
+val toolkit = TiffRenderer(TiffSource.fromFileDescriptor(fd, size)) // fd: an already-open, seekable file descriptor
+
+toolkit.use { renderer ->
+    renderer.openPage(0).use { page ->
+        val bitmap = createTiffBitmap(page.width, page.height)
+        page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
     }
 }
 ```
 
-## Features
+## Contents
 
-- **Multi-page support.** Every TIFF directory is exposed as a `TiffPage`.
-- **One implementation, three targets.** `TiffRenderer`/`TiffPage` are a single concrete
-  implementation shared across Android, iOS, and JVM; only the innermost native call is
-  platform-specific. Behavior doesn't drift between platforms.
-- **Two render modes.** `TiffRenderMode.FOR_DISPLAY` (bilinear resampling, for on-screen viewing)
-  and `FOR_PRINT` (nearest-neighbor, for exact pixel reproduction).
-- **Opt-in decode caching.** `TiffPage#retainRaster()` decodes a page once and reuses that decode
-  across repeated `render()` calls — useful when rendering the same page at multiple zoom levels
-  or tile sizes. Off by default, since the cached raster is the page's full uncompressed pixel
-  grid (hundreds of MB for a large scanned page).
-- **Clip and transform support.** `render()` accepts an optional destination clip and an optional
-  affine transform.
-- **Android-native convenience overloads.** `TiffRenderer(ParcelFileDescriptor)` and
-  `TiffPage#render(Bitmap, Rect?, Matrix?, TiffRenderMode)` accept Android's own platform types
-  directly, so Android-only call sites never have to touch the cross-platform
-  `TiffSource`/`TiffBitmap`/`TiffRect`/`TiffTransform` wrapper types at all.
+- [Why TiffRenderer](#why-tiffrenderer)
+- [Install](#install)
+  - [Android](#android)
+  - [iOS](#ios)
+  - [JVM / desktop](#jvm--desktop)
+  - [Building from source](#building-from-source)
+- [Getting started](#getting-started)
+  - [Android convenience overloads](#android-convenience-overloads)
+  - [JVM / desktop](#jvm--desktop-1)
+- [Lifecycle](#lifecycle)
+- [Codec support](#codec-support)
+- [Testing](#testing)
+- [Native libraries](#native-libraries)
+- [Requirements](#requirements)
+- [Sample app](#sample-app)
+- [License](#license)
 
-## Installation
+## Why TiffRenderer
+
+Android has no built-in TIFF decoder — unlike PDF, which gets `android.graphics.pdf.PdfRenderer`
+backed by pdfium, there's simply no equivalent for TIFF. TiffRenderer fills that gap, and its
+public API is deliberately modeled on `PdfRenderer`'s own shape (same method names, same
+lifecycle, same page/render-mode pattern), so it's immediately familiar to any Android developer,
+with divergences only where the underlying reality genuinely differs (documented inline where they
+occur).
+
+`TiffRenderer`/`TiffPage` are a **single concrete implementation shared across Android, iOS, and
+JVM**, cross-compiled behind one platform-neutral C++ decode/resample core (Android NDK/JNI,
+Xcode/Kotlin-Native cinterop on iOS, plain JNI on JVM desktop); only the innermost native call is
+platform-specific, so decode and render behavior doesn't drift between platforms. Every TIFF
+directory is exposed as a `TiffPage`, `render()` accepts an optional destination clip and affine
+transform, and `TiffPage#retainRaster()` gives you opt-in decode caching for rendering the same
+page at multiple zoom levels or tile sizes without redecoding each time (off by default, since a
+cached raster is the page's full uncompressed pixel grid — hundreds of MB for a large scanned
+page). `TiffRenderMode.FOR_DISPLAY` (bilinear + mip-level minification, for on-screen viewing) and
+`FOR_PRINT` (nearest-neighbor, for exact pixel reproduction) select genuinely different resampling
+behavior, not a decorative pass-through enum. On Android specifically, `TiffRenderer(ParcelFileDescriptor)`
+and `TiffPage#render(Bitmap, Rect?, Matrix?, TiffRenderMode)` accept the platform's own types
+directly, so Android-only call sites never have to touch the cross-platform
+`TiffSource`/`TiffBitmap`/`TiffRect`/`TiffTransform` wrapper types at all. JPEG-in-TIFF and WebP
+are supported via vendored [IJG libjpeg](https://www.ijg.org/) and
+[libwebp](https://github.com/webmproject/libwebp); see [Native libraries](#native-libraries) below
+for exact pinned versions.
+
+## Install
 
 > Versions before 2.0.0 were published to JitPack under `com.github.lucf15:TiffRenderer`. That
 > coordinate is no longer updated; migrate to the Maven Central one below.
@@ -114,15 +135,15 @@ includeBuild("../path/to/TiffRenderer") {
 ```
 
 Building the library requires the Android NDK and CMake (versions pinned in
-`lib/native/build.gradle.kts` via `ndkVersion` / `externalNativeBuild.cmake.version`); Gradle will
-fetch them automatically if they aren't already installed. Building for iOS additionally requires
+`gradle/libs.versions.toml`); Gradle will fetch them automatically if they aren't already
+installed. Building for iOS additionally requires
 Xcode: `:lib:core`'s iOS cinterop tasks depend on `:lib:native`'s `buildTiffCoreForIos` task, so the
 native cross-compile (`lib/native/src/main/cpp/build-ios.sh`) runs automatically as part of any
 Gradle iOS build — no manual step needed. libtiff, libjpeg, and libwebp are all vendored as git
 submodules, so clone with `--recurse-submodules` (or run `git submodule update --init --recursive`
 afterwards) before building any platform.
 
-## Quick start
+## Getting started
 
 ```kotlin
 import io.github.lucf15.tiffrenderer.TiffRenderer
@@ -229,6 +250,39 @@ A TIFF using an unsupported codec opens fine (the compression tag is just metada
 something actually tries to decode pixels) but `TiffPage#render()` throws `TiffIOException` once
 decoding is actually attempted. It never silently misdecodes or crashes.
 
+## Testing
+
+The bulk of the suite lives in one shared `integrationTest` source set and runs, unmodified,
+against the real native decode path on all three targets — Android (on-device/emulator), iOS
+(simulator), and JVM — not mocked or platform-specific:
+
+- **`TiffRendererLifecycleTest`** — construction, open/close state machine, the
+  one-page-open-at-a-time invariant.
+- **`TiffRendererCodecTest`** — the codec support matrix above: every supported codec must decode,
+  every unsupported one must throw `TiffIOException` specifically from `render()`, never from
+  `openPage()`.
+- **`TiffRendererRetainRasterTest`** — `retainRaster()`'s repeated-render consistency and cache
+  invalidation across pages.
+- **`TiffRendererCorruptInputTest`** — hostile/corrupt TIFFs (adversarial dimensions, truncated
+  data) must surface as `TiffIOException`, never a crash.
+- **`TiffRendererRenderTest`** — pixel-level render correctness (default fit-to-clip transform,
+  explicit clip, custom transform).
+- **`TiffRendererMinificationTest`** — downscaling a fine checkerboard must blend across the mip
+  pyramid instead of aliasing to stark black/white.
+
+Fixtures are real `.tif` files under `lib/core/src/commonTest/resources/`, generated by
+`lib/core/src/commonTest/tools/generate_fixtures.py`. A handful of tests are genuinely
+platform-specific and live outside `integrationTest`: `TiffRendererAndroidNativeOverloadTest`
+covers the `Bitmap`/`Matrix`/`Rect` convenience overloads (Android only, since those types don't
+exist elsewhere), and `TiffSourceByteArrayTest`/`TiffBitmapOverflowTest` cover JVM/iOS-specific
+edge cases.
+
+```
+./gradlew :lib:core:jvmTest                     # JVM, no device/emulator needed
+./gradlew :lib:core:iosSimulatorArm64Test        # iOS simulator
+./gradlew :lib:core:connectedAndroidDeviceTest   # Android, needs a running device/emulator
+```
+
 ## Native libraries
 
 Vendored as pinned git submodules under `lib/native/src/main/cpp/third_party/` (the same sources
@@ -244,10 +298,13 @@ libtiff and libwebp both bump automatically, including this table (see
 `.github/workflows/libtiff-update-check.yml` / `libwebp-update-check.yml`). libjpeg's release
 cadence is measured in years rather than months, so its version is bumped by hand instead.
 
+Each library's copyright notice and license terms are reproduced in
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+
 ## Requirements
 
-- **Android**: `minSdk` 24+. Native libraries are built for `arm64-v8a`, `armeabi-v7a`, `x86_64`,
-  and `x86`.
+- **Android**: `minSdk` 24+, `compileSdk` 37. Native libraries are built for `arm64-v8a`,
+  `armeabi-v7a`, `x86_64`, and `x86`.
 - **iOS**: deployment target 13.0+, `iosArm64` and `iosSimulatorArm64` (no `iosX64`: Apple/Xcode
   itself has dropped support for the Intel simulator).
 - **JVM/desktop**: JDK 17+; macOS (`aarch64`), Linux (`x86_64`), Windows (`x86_64`).

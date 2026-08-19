@@ -5,11 +5,11 @@ plugins {
 
 android {
     namespace = "io.github.lucf15.tiffrenderer.sample"
-    compileSdk = 37
+    compileSdk = libs.versions.androidCompileSdk.get().toInt()
     defaultConfig {
         applicationId = "io.github.lucf15.tiffrenderer.sample"
-        minSdk = 24
-        targetSdk = 37
+        minSdk = libs.versions.androidMinSdk.get().toInt()
+        targetSdk = libs.versions.androidTargetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
     }
@@ -21,8 +21,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.toVersion(libs.versions.jvmToolchain.get())
+        targetCompatibility = JavaVersion.toVersion(libs.versions.jvmToolchain.get())
     }
     buildFeatures {
       compose = true
@@ -39,7 +39,7 @@ android {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(libs.versions.jvmToolchain.get().toInt())
 }
 
 dependencies {
