@@ -1,4 +1,5 @@
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import org.gradle.api.tasks.PathSensitivity
 
 plugins {
     alias(libs.plugins.android.library)
@@ -72,7 +73,9 @@ val buildTiffCoreForIos = tasks.register<Exec>("buildTiffCoreForIos") {
     commandLine("./build-ios.sh", outputDir.get().asFile.absolutePath)
 
     inputs.dir(cppDir).withPropertyName("cppSources").ignoreEmptyDirectories()
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.dir(outputDir).withPropertyName("iosLibs")
+    outputs.cacheIf { true }
 }
 
 val buildTiffRendererJniForJvm = tasks.register<Exec>("buildTiffRendererJniForJvm") {
@@ -100,7 +103,9 @@ val buildTiffRendererJniForJvm = tasks.register<Exec>("buildTiffRendererJniForJv
     )
 
     inputs.dir(cppDir).withPropertyName("cppSources").ignoreEmptyDirectories()
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     outputs.dir(outputDir).withPropertyName("jvmNatives")
+    outputs.cacheIf { true }
 }
 
 mavenPublishing {
