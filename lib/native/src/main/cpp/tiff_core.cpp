@@ -45,8 +45,8 @@
 namespace {
 
 // libtiff reports errors via a process-wide callback, not a return code; every entry point here
-// is expected to be externally serialized by the caller (mirrors TiffRenderer.sTiffLock), so one
-// thread_local scratch buffer suffices.
+// is expected to be externally serialized per document by the caller (each TiffCoreHandle owns
+// its own lock), so one thread_local scratch buffer suffices.
 thread_local std::string gLastError;
 
 void errorHandler(const char* module, const char* fmt, va_list args) {
@@ -218,6 +218,13 @@ namespace {
 // Seeks to pageIndex and decodes it to a packed-RGBA raster; caller must gLastError.clear() first.
 bool decodePage(TIFF* tiff, int32_t pageIndex, uint32_t* outWidth, uint32_t* outHeight,
         std::vector<uint32_t>* outRaster, char* errBuf, size_t errBufLen) {
+    // A negative pageIndex would otherwise wrap to a huge tdir_t (unsigned); TIFFSetDirectory
+    // would likely still reject it, but this is a public C API and the wrap itself is worth
+    // never relying on.
+    if (pageIndex < 0) {
+        fillErrBuf(errBuf, errBufLen, "page index cannot be negative");
+        return false;
+    }
     if (!TIFFSetDirectory(tiff, static_cast<tdir_t>(pageIndex))) {
         fillErrBuf(errBuf, errBufLen, "cannot seek to TIFF page");
         return false;
@@ -231,8 +238,14 @@ bool decodePage(TIFF* tiff, int32_t pageIndex, uint32_t* outWidth, uint32_t* out
         return false;
     }
     // uint64_t avoids 32-bit size_t wraparound; the cap avoids a huge alloc succeeding via
-    // overcommit and OOM-killing later instead of failing cleanly.
+    // overcommit and OOM-killing later instead of failing cleanly. Scaled by pointer width: a
+    // 32-bit process's entire address space is ~4GB (often much less usable in practice), so the
+    // 64-bit cap would leave far too little headroom for everything else the process needs.
+#if UINTPTR_MAX == 0xFFFFFFFF
+    constexpr uint64_t kMaxDecodedPixels = 64'000'000;  // ~256MB packed RGBA
+#else
     constexpr uint64_t kMaxDecodedPixels = 250'000'000;  // ~1GB packed RGBA
+#endif
     const uint64_t pixelCount = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
     if (pixelCount > kMaxDecodedPixels) {
         fillErrBuf(errBuf, errBufLen, "TIFF page dimensions too large to decode");
@@ -359,6 +372,10 @@ TiffCoreStatus tiffcore_open_page(TiffCoreDocument* doc, int32_t pageIndex, uint
         return TIFFCORE_ERROR_ILLEGAL_STATE;
     }
     gLastError.clear();
+    if (pageIndex < 0) {
+        fillErrBuf(errBuf, errBufLen, "page index cannot be negative");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
     TIFF* tiff = doc->tiff;
     if (!TIFFSetDirectory(tiff, static_cast<tdir_t>(pageIndex))) {
         fillErrBuf(errBuf, errBufLen, "cannot open TIFF page");
@@ -424,6 +441,23 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
     }
     gLastError.clear();
 
+    // Never trust caller-supplied clip bounds; check before paying for a decode.
+    if (clipLeft < 0 || clipTop < 0 || clipLeft >= clipRight || clipTop >= clipBottom
+            || clipRight > dstWidth || clipBottom > dstHeight) {
+        fillErrBuf(errBuf, errBufLen, "clip bounds outside destination bitmap");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+
+    // matrix[] is in android.graphics.Matrix#getValues() order; perspective terms are ignored
+    // since the caller has already rejected non-affine transforms.
+    const tiffrenderer::AffineTransform forward(matrix[0], matrix[1], matrix[2], matrix[3],
+            matrix[4], matrix[5]);
+    tiffrenderer::AffineTransform inverse;
+    if (!forward.invert(&inverse)) {
+        fillErrBuf(errBuf, errBufLen, "transform is not invertible");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+
     // Reuse the retainRaster() cache instead of redecoding if it matches this page.
     uint32_t srcWidth;
     uint32_t srcHeight;
@@ -439,23 +473,6 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
             return TIFFCORE_ERROR_IO;
         }
         srcRaster = decoded.data();
-    }
-
-    // Never trust caller-supplied clip bounds this far in.
-    if (clipLeft < 0 || clipTop < 0 || clipLeft >= clipRight || clipTop >= clipBottom
-            || clipRight > dstWidth || clipBottom > dstHeight) {
-        fillErrBuf(errBuf, errBufLen, "clip bounds outside destination bitmap");
-        return TIFFCORE_ERROR_INVALID_ARG;
-    }
-
-    // matrix[] is in android.graphics.Matrix#getValues() order; perspective terms are ignored
-    // since the caller has already rejected non-affine transforms.
-    const tiffrenderer::AffineTransform forward(matrix[0], matrix[1], matrix[2], matrix[3],
-            matrix[4], matrix[5]);
-    tiffrenderer::AffineTransform inverse;
-    if (!forward.invert(&inverse)) {
-        fillErrBuf(errBuf, errBufLen, "transform is not invertible");
-        return TIFFCORE_ERROR_INVALID_ARG;
     }
 
     const int iSrcWidth = static_cast<int>(srcWidth);
@@ -501,7 +518,8 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
             }
             const float sampleX = srcX / mipScale;
             const float sampleY = srcY / mipScale;
-            dstPixels[y * dstStridePixels + x] = bilinear
+            dstPixels[static_cast<size_t>(y) * static_cast<size_t>(dstStridePixels)
+                    + static_cast<size_t>(x)] = bilinear
                     ? sampleBilinear(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY)
                     : sampleNearest(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY);
         }

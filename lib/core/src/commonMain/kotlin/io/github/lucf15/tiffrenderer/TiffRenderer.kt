@@ -23,6 +23,8 @@ class TiffRenderer(source: TiffSource) : AutoCloseable {
         }
 
     init {
+        check(!source.consumed) { "TiffSource has already been used to open a TiffRenderer" }
+        source.consumed = true
         try {
             val h = TiffCoreBinding.open(source)
             handle = h

@@ -1,5 +1,6 @@
 package io.github.lucf15.tiffrenderer
 
+import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -24,7 +25,7 @@ internal object TiffRendererNativeJvm {
     external fun nativeRenderPage(
         documentPtr: Long,
         pageIndex: Int,
-        destination: IntArray,
+        destination: ByteBuffer,
         dstWidth: Int,
         dstHeight: Int,
         clipLeft: Int,
@@ -41,8 +42,8 @@ internal object TiffRendererNativeJvm {
 }
 
 private fun loadNativeLibrary() {
-    val (os, libFileName) = currentOsAndLibFileName()
-    val arch = currentArch()
+    val (os, libFileName) = osAndLibFileName(System.getProperty("os.name"))
+    val arch = archName(System.getProperty("os.arch"))
     val resourcePath = "/natives/$os-$arch/$libFileName"
     val resource = TiffRendererNativeJvm::class.java.getResourceAsStream(resourcePath)
         ?: throw UnsatisfiedLinkError("no bundled native library at $resourcePath")
@@ -53,8 +54,10 @@ private fun loadNativeLibrary() {
     System.load(tempFile.toAbsolutePath().toString())
 }
 
-private fun currentOsAndLibFileName(): Pair<String, String> {
-    val osName = System.getProperty("os.name").lowercase()
+/** Pure so the branch match (including the unsupported-OS fallthrough) is directly testable
+ * without faking `System.getProperty`. */
+internal fun osAndLibFileName(rawOsName: String): Pair<String, String> {
+    val osName = rawOsName.lowercase()
     return when {
         osName.contains("mac") -> "macos" to "libtiffrenderer_jni_jvm.dylib"
         osName.contains("win") -> "windows" to "tiffrenderer_jni_jvm.dll"
@@ -63,9 +66,11 @@ private fun currentOsAndLibFileName(): Pair<String, String> {
     }
 }
 
-private fun currentArch(): String =
-    when (val archName = System.getProperty("os.arch").lowercase()) {
+/** Pure so the branch match (including the unsupported-arch fallthrough) is directly testable
+ * without faking `System.getProperty`. */
+internal fun archName(rawArchName: String): String =
+    when (val archNameLower = rawArchName.lowercase()) {
         "aarch64", "arm64" -> "aarch64"
         "x86_64", "amd64" -> "x86_64"
-        else -> throw UnsatisfiedLinkError("unsupported architecture: $archName")
+        else -> throw UnsatisfiedLinkError("unsupported architecture: $archNameLower")
     }

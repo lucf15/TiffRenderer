@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(NOT MSVC)
-    add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden)
+    add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden -fstack-protector-strong)
+    add_compile_definitions($<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID)
@@ -126,6 +127,9 @@ add_library(tiffrenderer_core STATIC
 )
 target_link_libraries(tiffrenderer_core PUBLIC tiff)
 target_include_directories(tiffrenderer_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+if(NOT MSVC)
+    target_compile_options(tiffrenderer_core PRIVATE -Wall -Wextra)
+endif()
 
 # --- JNI wrapper (Android only) -----------------------------------------------
 # Guarded so this same CMakeLists.txt also serves as the iOS build's front door (invoked with
@@ -147,7 +151,10 @@ if(ANDROID)
     )
 
     target_compile_options(tiffrenderer_jni PRIVATE -Wall -Wextra)
-    target_link_options(tiffrenderer_jni PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.map")
+    target_link_options(tiffrenderer_jni PRIVATE
+        "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.map"
+        "-Wl,-z,relro" "-Wl,-z,now"
+    )
 endif()
 
 # --- JNI wrapper (desktop JVM only): raw jintArray pixels, jni.h from the JDK via find_package(JNI) ---
@@ -166,6 +173,9 @@ if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     if(APPLE)
         target_link_options(tiffrenderer_jni_jvm PRIVATE "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.macos.txt")
     elseif(UNIX)
-        target_link_options(tiffrenderer_jni_jvm PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.map")
+        target_link_options(tiffrenderer_jni_jvm PRIVATE
+            "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.map"
+            "-Wl,-z,relro" "-Wl,-z,now"
+        )
     endif()
 endif()

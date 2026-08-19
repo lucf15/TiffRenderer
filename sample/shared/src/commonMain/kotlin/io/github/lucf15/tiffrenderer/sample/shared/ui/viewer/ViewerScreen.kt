@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
@@ -47,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import io.github.lucf15.tiffrenderer.TiffSource
 import io.github.lucf15.tiffrenderer.sample.shared.theme.AppTheme
 import io.github.lucf15.tiffrenderer.sample.shared.ui.components.TextActionButton
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 @Composable
 fun ViewerScreen(
@@ -55,7 +60,8 @@ fun ViewerScreen(
     modifier: Modifier = Modifier,
 ) {
     val state = remember(source) { TiffViewerState(source) }
-    DisposableEffect(state) { onDispose { state.close() } }
+    val closeScope = rememberCoroutineScope()
+    DisposableEffect(state) { onDispose { closeScope.launch { state.close() } } }
 
     var uiState by remember(state) { mutableStateOf<ViewerUiState>(ViewerUiState.Loading) }
     LaunchedEffect(state) {
@@ -209,21 +215,23 @@ private fun TiffPageItem(
     var error by remember(index) { mutableStateOf<String?>(null) }
     val aspectRatio = pageSize.width / pageSize.height.toFloat()
 
-    LaunchedEffect(index) {
-        runCatching { state.renderPage(index) }
-            .onSuccess { bitmap = it }
-            .onFailure { error = it.message ?: "failed to render page" }
-    }
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val targetWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }.coerceAtLeast(1)
+        val targetHeightPx = (targetWidthPx / aspectRatio).roundToInt().coerceAtLeast(1)
 
-    PageContent(
-        bitmap = bitmap,
-        error = error,
-        index = index,
-        aspectRatio = aspectRatio,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .dropShadow(
+        LaunchedEffect(index, targetWidthPx, targetHeightPx) {
+            runCatching { state.renderPage(index, targetWidthPx, targetHeightPx) }
+                .onSuccess { bitmap = it }
+                .onFailure { error = it.message ?: "failed to render page" }
+        }
+
+        PageContent(
+            bitmap = bitmap,
+            error = error,
+            index = index,
+            aspectRatio = aspectRatio,
+            modifier =
+                Modifier.dropShadow(
                     shape = RectangleShape,
                     shadow =
                         Shadow(
@@ -233,7 +241,8 @@ private fun TiffPageItem(
                             offset = DpOffset(0.dp, 2.dp),
                         ),
                 ),
-    )
+        )
+    }
 }
 
 @Composable

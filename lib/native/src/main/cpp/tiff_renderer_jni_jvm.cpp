@@ -167,7 +167,7 @@ void nativeOpenPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageI
 }
 
 void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
-        jintArray destination, jint dstWidth, jint dstHeight, jint clipLeft, jint clipTop,
+        jobject destination, jint dstWidth, jint dstHeight, jint clipLeft, jint clipTop,
         jint clipRight, jint clipBottom, jfloatArray matrixValues, jint renderMode) {
     if (!requireDocument(env, documentPtr)) {
         return;
@@ -186,28 +186,33 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
                 "dstWidth/dstHeight must be positive");
         return;
     }
-    const int64_t requiredLength = static_cast<int64_t>(dstWidth) * static_cast<int64_t>(dstHeight);
-    if (env->GetArrayLength(destination) < requiredLength) {
+
+    // destination is a direct java.nio.ByteBuffer (TiffBitmap.jvm's own off-heap storage): the
+    // raw address is stable for as long as the Java-side ByteBuffer object is reachable, so unlike
+    // an on-heap array there's nothing here for the JVM to pin, copy, or have GC work around.
+    void* bufferAddress = env->GetDirectBufferAddress(destination);
+    if (bufferAddress == nullptr) {
         throwException(env, "java/lang/IllegalArgumentException",
-                "destination smaller than dstWidth * dstHeight");
+                "destination must be a direct ByteBuffer");
+        return;
+    }
+    const jlong bufferCapacity = env->GetDirectBufferCapacity(destination);
+    const int64_t requiredBytes =
+            static_cast<int64_t>(dstWidth) * static_cast<int64_t>(dstHeight) * 4;
+    if (bufferCapacity < 0 || bufferCapacity < requiredBytes) {
+        throwException(env, "java/lang/IllegalArgumentException",
+                "destination smaller than dstWidth * dstHeight * 4 bytes");
         return;
     }
 
     jfloat matrix[6];
     env->GetFloatArrayRegion(matrixValues, 0, 6, matrix);
 
-    jint* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination, nullptr));
-    if (pixels == nullptr) {
-        return;
-    }
-
     char errBuf[kErrBufSize] = {};
     const TiffCoreStatus status = tiffcore_render_page(asDocument(documentPtr), pageIndex,
-            reinterpret_cast<uint32_t*>(pixels), dstWidth, dstWidth, dstHeight, clipLeft, clipTop,
-            clipRight, clipBottom, matrix, static_cast<TiffCoreRenderMode>(renderMode), errBuf,
-            sizeof(errBuf));
-
-    env->ReleasePrimitiveArrayCritical(destination, pixels, status == TIFFCORE_OK ? 0 : JNI_ABORT);
+            reinterpret_cast<uint32_t*>(bufferAddress), dstWidth, dstWidth, dstHeight, clipLeft,
+            clipTop, clipRight, clipBottom, matrix, static_cast<TiffCoreRenderMode>(renderMode),
+            errBuf, sizeof(errBuf));
 
     if (status != TIFFCORE_OK) {
         throwForStatus(env, status, errBuf, "failed to render TIFF page");
@@ -239,7 +244,8 @@ const JNINativeMethod gMethods[] = {
         {"nativeClose", "(J)V", reinterpret_cast<void*>(nativeClose)},
         {"nativeGetPageCount", "(J)I", reinterpret_cast<void*>(nativeGetPageCount)},
         {"nativeOpenPage", "(JI[I)V", reinterpret_cast<void*>(nativeOpenPage)},
-        {"nativeRenderPage", "(JI[IIIIIII[FI)V", reinterpret_cast<void*>(nativeRenderPage)},
+        {"nativeRenderPage", "(JILjava/nio/ByteBuffer;IIIIII[FI)V",
+                reinterpret_cast<void*>(nativeRenderPage)},
         {"nativeRetainRaster", "(JI)V", reinterpret_cast<void*>(nativeRetainRaster)},
         {"nativeReleaseRaster", "(J)V", reinterpret_cast<void*>(nativeReleaseRaster)},
 };

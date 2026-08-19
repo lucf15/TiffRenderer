@@ -86,6 +86,35 @@ class TiffRendererRenderTest {
     }
 
     @Test
+    fun render_nonInvertibleTransform_throwsIllegalArgumentException() {
+        openSinglePage().use { renderer ->
+            val page = renderer.openPage(0)
+            val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
+            val zeroScale = TiffTransform(floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f))
+            assertFailsWith<IllegalArgumentException> {
+                page.render(bitmap, null, zeroScale, TiffRenderMode.FOR_DISPLAY)
+            }
+            page.close()
+        }
+    }
+
+    @Test
+    fun render_identityScaleAtSourceBoundary_samplesPureUnblendedColor() {
+        // At identity scale (no mip pyramid involved), sampleBilinear's own x1/y1 clamp is what
+        // keeps the last row/column's neighbor lookup in bounds; checkerboard_fine.tif has real
+        // content variation at (249,249) (unlike the flat-color fixtures elsewhere in this file),
+        // so a broken clamp would show up as a blended/garbage color instead of the pure cell color.
+        TiffRenderer(Fixtures.open("checkerboard_fine.tif")).use { renderer ->
+            val page = renderer.openPage(0)
+            val bitmap = createTiffBitmap(250, 250)
+            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+
+            assertEquals(argb(255, 0, 0, 0), bitmap.pixelAt(249, 249))
+            page.close()
+        }
+    }
+
+    @Test
     fun render_withCustomTranslateTransform_offsetsContentAsSpecified() {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)

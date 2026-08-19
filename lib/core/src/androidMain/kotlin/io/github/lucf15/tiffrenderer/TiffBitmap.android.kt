@@ -6,7 +6,9 @@ import android.graphics.Bitmap
  * writes into it directly via the NDK's `AndroidBitmap` pixel-access path. */
 actual class TiffBitmap(internal val bitmap: Bitmap) {
     init {
+        require(!bitmap.isRecycled) { "TiffBitmap cannot wrap a recycled bitmap" }
         require(bitmap.config == Bitmap.Config.ARGB_8888) { "TiffBitmap requires an ARGB_8888 bitmap" }
+        require(bitmap.isMutable) { "TiffBitmap requires a mutable bitmap" }
     }
 
     actual val width: Int get() = bitmap.width

@@ -18,7 +18,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate-wrapper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gradle/actions/wrapper-validation@v4
+
   build-android:
+    needs: validate-wrapper
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -84,6 +92,7 @@ jobs:
           script: ./gradlew :lib:core:connectedAndroidDeviceTest
 
   build-jvm:
+    needs: validate-wrapper
     strategy:
       fail-fast: false
       matrix:
@@ -136,6 +145,7 @@ jobs:
           retention-days: 1
 
   build-ios:
+    needs: validate-wrapper
     runs-on: macos-latest
     timeout-minutes: 20
     steps:

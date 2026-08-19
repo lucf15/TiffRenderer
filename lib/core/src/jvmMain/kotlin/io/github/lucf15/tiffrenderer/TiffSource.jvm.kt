@@ -6,6 +6,8 @@ actual class TiffSource private constructor(
     internal val path: String?,
     internal var bytes: ByteArray?,
 ) {
+    internal actual var consumed: Boolean = false
+
     actual fun release() {
     }
 
