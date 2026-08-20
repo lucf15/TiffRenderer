@@ -5,10 +5,8 @@ import androidx.savedstate.serialization.SavedStateConfiguration
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 
-/**
- * KMP has no reflection, so unlike Android-only Nav3 usage (`rememberNavBackStack(Picker)`),
- * destination-key serialization needs this spelled out explicitly.
- */
+/** KMP has no reflection, so destination-key serialization needs this spelled out explicitly,
+ * unlike Android-only Nav3 usage (`rememberNavBackStack(Picker)`). */
 val navConfig = SavedStateConfiguration {
     serializersModule = SerializersModule {
         polymorphic(NavKey::class) {

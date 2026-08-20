@@ -1,0 +1,25 @@
+name: Check for libjpeg updates
+
+on:
+  schedule:
+    - cron: "0 6 * * 3"
+  workflow_dispatch:
+
+concurrency:
+  group: libjpeg-update-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-check:
+    uses: ./.github/workflows/native-lib-update-check.yml
+    with:
+      library_name: libjpeg
+      repo_url: https://github.com/libjpeg-turbo/ijg
+      tag_pattern: '^jpeg-[0-9]+[a-z]?$'
+      version_prefix: jpeg-
+      readme_link_text: IJG libjpeg
+    secrets: inherit

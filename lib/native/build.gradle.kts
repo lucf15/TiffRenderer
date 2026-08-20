@@ -20,6 +20,9 @@ android {
         externalNativeBuild {
             cmake {
                 arguments += listOf("-DANDROID_STL=c++_static")
+                if (System.getenv("TIFFRENDERER_WERROR") == "true") {
+                    arguments += "-DTIFFRENDERER_WERROR=ON"
+                }
             }
         }
 

@@ -210,14 +210,17 @@ struct TiffCoreDocument {
     int32_t cachedPageIndex = -1;
     uint32_t cachedWidth = 0;
     uint32_t cachedHeight = 0;
+    bool cachedPartial = false;
     std::vector<uint32_t> cachedRaster;
 };
 
 namespace {
 
 // Seeks to pageIndex and decodes it to a packed-RGBA raster; caller must gLastError.clear() first.
+// *outPartial is set true if libtiff tolerated a decode error partway through (stopOnError=0 below
+// means TIFFReadRGBAImageOriented can still report success after one), false otherwise.
 bool decodePage(TIFF* tiff, int32_t pageIndex, uint32_t* outWidth, uint32_t* outHeight,
-        std::vector<uint32_t>* outRaster, char* errBuf, size_t errBufLen) {
+        std::vector<uint32_t>* outRaster, bool* outPartial, char* errBuf, size_t errBufLen) {
     // A negative pageIndex would otherwise wrap to a huge tdir_t (unsigned); TIFFSetDirectory
     // would likely still reject it, but this is a public C API and the wrap itself is worth
     // never relying on.
@@ -264,6 +267,7 @@ bool decodePage(TIFF* tiff, int32_t pageIndex, uint32_t* outWidth, uint32_t* out
     }
     *outWidth = width;
     *outHeight = height;
+    *outPartial = !gLastError.empty();
     return true;
 }
 
@@ -407,14 +411,16 @@ TiffCoreStatus tiffcore_retain_raster(TiffCoreDocument* doc, int32_t pageIndex, 
     uint32_t width;
     uint32_t height;
     std::vector<uint32_t> raster;
-    if (!decodePage(doc->tiff, pageIndex, &width, &height, &raster, errBuf, errBufLen)) {
+    bool partial = false;
+    if (!decodePage(doc->tiff, pageIndex, &width, &height, &raster, &partial, errBuf, errBufLen)) {
         return TIFFCORE_ERROR_IO;
     }
     doc->cachedRaster = std::move(raster);
     doc->cachedWidth = width;
     doc->cachedHeight = height;
+    doc->cachedPartial = partial;
     doc->cachedPageIndex = pageIndex;
-    return TIFFCORE_OK;
+    return partial ? TIFFCORE_OK_PARTIAL : TIFFCORE_OK;
 }
 
 void tiffcore_release_raster(TiffCoreDocument* doc) {
@@ -424,6 +430,7 @@ void tiffcore_release_raster(TiffCoreDocument* doc) {
     doc->cachedPageIndex = -1;
     doc->cachedWidth = 0;
     doc->cachedHeight = 0;
+    doc->cachedPartial = false;
     std::vector<uint32_t>().swap(doc->cachedRaster);  // release the backing memory, not just clear()
 }
 
@@ -437,6 +444,14 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
     }
     if (dstPixels == nullptr) {
         fillErrBuf(errBuf, errBufLen, "destination cannot be null");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+    if (pageIndex < 0) {
+        fillErrBuf(errBuf, errBufLen, "page index cannot be negative");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+    if (dstStridePixels < dstWidth) {
+        fillErrBuf(errBuf, errBufLen, "dstStridePixels cannot be smaller than dstWidth");
         return TIFFCORE_ERROR_INVALID_ARG;
     }
     gLastError.clear();
@@ -463,12 +478,14 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
     uint32_t srcHeight;
     const uint32_t* srcRaster;
     std::vector<uint32_t> decoded;
+    bool partial = false;
     if (doc->cachedPageIndex == pageIndex) {
         srcWidth = doc->cachedWidth;
         srcHeight = doc->cachedHeight;
         srcRaster = doc->cachedRaster.data();
+        partial = doc->cachedPartial;
     } else {
-        if (!decodePage(doc->tiff, pageIndex, &srcWidth, &srcHeight, &decoded, errBuf,
+        if (!decodePage(doc->tiff, pageIndex, &srcWidth, &srcHeight, &decoded, &partial, errBuf,
                     errBufLen)) {
             return TIFFCORE_ERROR_IO;
         }
@@ -490,7 +507,13 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
     if (minScale > 0.0f && minScale < 1.0f) {
         mipLevels = static_cast<int>(std::floor(std::log2(1.0f / minScale)));
     }
-    std::vector<uint32_t> mipBuffer;
+    // Two alternating buffers rather than one reassigned in place: halveRaster's own inputs
+    // (sampleRaster, pointing into whichever buffer produced the previous level) must stay valid
+    // for the full duration of the call that produces the next level, not just until some
+    // reassignment happens to run after the call returns.
+    std::vector<uint32_t> mipBufferA;
+    std::vector<uint32_t> mipBufferB;
+    bool useBufferA = true;
     const uint32_t* sampleRaster = srcRaster;
     int sampleWidth = iSrcWidth;
     int sampleHeight = iSrcHeight;
@@ -498,8 +521,10 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
     for (int level = 0; level < mipLevels && (sampleWidth > 1 || sampleHeight > 1); level++) {
         int nextWidth;
         int nextHeight;
+        std::vector<uint32_t>& mipBuffer = useBufferA ? mipBufferA : mipBufferB;
         mipBuffer = halveRaster(sampleRaster, sampleWidth, sampleHeight, &nextWidth, &nextHeight);
         sampleRaster = mipBuffer.data();
+        useBufferA = !useBufferA;
         sampleWidth = nextWidth;
         sampleHeight = nextHeight;
         mipScale *= 2.0f;
@@ -525,5 +550,5 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
         }
     }
 
-    return TIFFCORE_OK;
+    return partial ? TIFFCORE_OK_PARTIAL : TIFFCORE_OK;
 }

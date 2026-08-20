@@ -11,6 +11,18 @@ on:
         description: "Upstream repo URL, for the PR body text"
         required: true
         type: string
+      tag_pattern:
+        description: 'grep -E pattern matching this library''s real release tags, e.g. "^v[0-9]+\.[0-9]+\.[0-9]+$" or "^jpeg-[0-9]+[a-z]?$"'
+        required: true
+        type: string
+      version_prefix:
+        description: 'Literal prefix stripped from a tag to get the version README.md displays, e.g. "v" (tag v4.7.2 -> 4.7.2) or "jpeg-" (tag jpeg-10 -> 10)'
+        required: true
+        type: string
+      readme_link_text:
+        description: 'Exact markdown link text README.md uses for this library in its version table, e.g. "libtiff" or "IJG libjpeg"'
+        required: true
+        type: string
 
 jobs:
   check:
@@ -21,29 +33,34 @@ jobs:
     outputs:
       bump: ${{ steps.check.outputs.bump }}
       new_tag: ${{ steps.check.outputs.new_tag }}
+      new_sha: ${{ steps.check.outputs.new_sha }}
       current_tag: ${{ steps.check.outputs.current_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
       - name: Check for a newer stable tag
         id: check
+        env:
+          TAG_PATTERN: ${{ inputs.tag_pattern }}
         run: |
           cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
           git fetch --tags --quiet
           current_tag=$(git describe --tags --exact-match 2>/dev/null || echo "")
-          latest_tag=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          latest_tag=$(git tag -l | grep -E "$TAG_PATTERN" | sort -V | tail -1)
           echo "current: ${current_tag:-<none>}, latest: $latest_tag"
           if [ -n "$latest_tag" ] && [ "$current_tag" != "$latest_tag" ]; then
+            latest_sha=$(git rev-parse "$latest_tag^{commit}")
             echo "bump=true" >> "$GITHUB_OUTPUT"
             echo "new_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+            echo "new_sha=$latest_sha" >> "$GITHUB_OUTPUT"
             echo "current_tag=$current_tag" >> "$GITHUB_OUTPUT"
           else
             echo "bump=false" >> "$GITHUB_OUTPUT"
           fi
 
-  verify:
+  verify-android:
     needs: check
     if: needs.check.outputs.bump == 'true'
     runs-on: ubuntu-latest
@@ -51,15 +68,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
       - name: Check out candidate version
+        env:
+          NEW_SHA: ${{ needs.check.outputs.new_sha }}
         run: |
           cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
           git fetch --tags --quiet
-          git checkout "${{ needs.check.outputs.new_tag }}"
+          git checkout "$NEW_SHA"
 
       - uses: ./.github/actions/setup-android-toolchain
 
@@ -73,7 +92,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: AVD cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: avd-cache
         with:
           path: |
@@ -83,7 +102,7 @@ jobs:
 
       - name: Create AVD snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -93,7 +112,7 @@ jobs:
           script: echo "Generated AVD snapshot for caching."
 
       - name: Run instrumented test suite
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -103,8 +122,95 @@ jobs:
           disable-animations: true
           script: ./gradlew :lib:core:connectedAndroidDeviceTest
 
+  verify-jvm:
+    needs: check
+    if: needs.check.outputs.bump == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            java-arch: arm64
+            java-distribution: temurin
+          - os: macos-latest
+            java-arch: x64
+            java-distribution: temurin
+          - os: ubuntu-latest
+            java-arch: x64
+            java-distribution: temurin
+          - os: ubuntu-24.04-arm
+            java-arch: arm64
+            java-distribution: temurin
+          - os: windows-latest
+            java-arch: x64
+            java-distribution: temurin
+          - os: windows-11-arm
+            java-arch: arm64
+            java-distribution: zulu
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - name: Check out candidate version
+        shell: bash
+        env:
+          NEW_SHA: ${{ needs.check.outputs.new_sha }}
+        run: |
+          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
+          git fetch --tags --quiet
+          git checkout "$NEW_SHA"
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: ${{ matrix.java-distribution }}
+          java-version: "17"
+          architecture: ${{ matrix.java-arch }}
+
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        if: contains(fromJSON('["ubuntu-24.04-arm", "windows-11-arm"]'), matrix.os)
+        with:
+          packages: ""
+
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+      - run: ./gradlew :lib:core:jvmTest :sample:desktopApp:jar
+
+  verify-ios:
+    needs: check
+    if: needs.check.outputs.bump == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - name: Check out candidate version
+        env:
+          NEW_SHA: ${{ needs.check.outputs.new_sha }}
+        run: |
+          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
+          git fetch --tags --quiet
+          git checkout "$NEW_SHA"
+
+      - uses: ./.github/actions/setup-android-toolchain
+
+      - name: Install a CMake newer than the NDK-pinned 3.22.1 for the iOS Xcode-generator build
+        run: |
+          brew install cmake
+          echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
+
+      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test
+
   pr:
-    needs: [check, verify]
+    needs: [check, verify-android, verify-jvm, verify-ios]
     if: always() && needs.check.outputs.bump == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -114,30 +220,37 @@ jobs:
     outputs:
       pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check out candidate version
+        env:
+          NEW_SHA: ${{ needs.check.outputs.new_sha }}
         run: |
           cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
           git fetch --tags --quiet
-          git checkout "${{ needs.check.outputs.new_tag }}"
+          git checkout "$NEW_SHA"
 
       - name: Update README version reference
+        env:
+          VERSION_PREFIX: ${{ inputs.version_prefix }}
+          README_LINK_TEXT: ${{ inputs.readme_link_text }}
+          CURRENT_TAG: ${{ needs.check.outputs.current_tag }}
+          NEW_TAG: ${{ needs.check.outputs.new_tag }}
         run: |
-          old_version="${{ needs.check.outputs.current_tag }}"
-          new_version="${{ needs.check.outputs.new_tag }}"
-          if [ -z "$old_version" ]; then
+          if [ -z "$CURRENT_TAG" ]; then
             echo "current_tag is empty (submodule wasn't checked out at an exact tag); refusing to guess which version to replace" >&2
             exit 1
           fi
-          sed -i "/\[${{ inputs.library_name }}\]/ s/${old_version#v}/${new_version#v}/" README.md
+          sed -i "/\[$README_LINK_TEXT\]/ s/${CURRENT_TAG#"$VERSION_PREFIX"}/${NEW_TAG#"$VERSION_PREFIX"}/" README.md
 
       - name: Open PR
         id: pr
-        uses: peter-evans/create-pull-request@v6
+        env:
+          NEW_TAG: ${{ needs.check.outputs.new_tag }}
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6
         with:
           commit-message: "chore(${{ inputs.library_name }}): bump submodule to ${{ needs.check.outputs.new_tag }}"
           title: "chore(${{ inputs.library_name }}): bump submodule to ${{ needs.check.outputs.new_tag }}"
@@ -146,16 +259,17 @@ jobs:
             bumps the pinned submodule commit to match, and updates the version reference in
             README.md to stay in sync.
 
-            Build (all 4 ABIs) and the full instrumented suite (codec support matrix + corrupt-input
-            crash tests) already ran against this exact change before this PR was opened.
-            ${{ needs.verify.result == 'success' && 'They passed, so this auto-merges.' || '**They FAILED**: this needs manual investigation before merging.' }}
+            Build (all 4 Android ABIs, all 6 JVM desktop OS/arch combos, iOS) and the full
+            instrumented suite (codec support matrix + corrupt-input crash tests) already ran
+            against this exact change before this PR was opened.
+            ${{ (needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success') && 'They passed, so this auto-merges.' || '**They FAILED**: this needs manual investigation before merging.' }}
           branch: bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
           base: main
           labels: dependencies
 
   merge:
-    needs: [check, verify, pr]
-    if: needs.verify.result == 'success'
+    needs: [check, verify-android, verify-jvm, verify-ios, pr]
+    if: needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

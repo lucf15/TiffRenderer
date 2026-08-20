@@ -12,12 +12,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** Owns a [TiffRenderer] for one opened document. Plain class, not `ViewModel`: this sample
- * doesn't need process-death survival, so a Compose-owned `remember` is enough.
- *
- * Every method serializes on [pageLock], since [TiffRenderer] only allows one page open at a time
- * and a scrolling multi-page list can call [renderPage]/[pageSizes]/[close] concurrently as items
- * enter and leave composition. */
+/** Owns a [TiffRenderer] for one opened document. Plain class, not `ViewModel`, since this sample
+ * doesn't need process-death survival. Every method serializes on [pageLock]: [TiffRenderer] only
+ * allows one page open at a time, and a scrolling list can call these concurrently. */
 class TiffViewerState(source: TiffSource) {
     private val pageLock = Mutex()
     private val renderer = TiffRenderer(source)
@@ -33,11 +30,9 @@ class TiffViewerState(source: TiffSource) {
             }
         }
 
-    /** Renders into a [targetWidth]x[targetHeight] bitmap, not the page's own native resolution —
-     * the caller passes the actual on-screen display size, so a large scanned page never gets
-     * decoded at, say, 10000x14000 just to be shown shrunk to a few hundred on-screen pixels. The
-     * library's own mip-pyramid downscaling (see `TiffRendererMinificationTest`) does the size
-     * reduction as part of the decode, not as a separate post-decode resize. */
+    /** Renders into a [targetWidth]x[targetHeight] bitmap, not the page's native resolution, so a
+     * large scan never decodes at full size just to be shown shrunk on-screen: the library's own
+     * mip-pyramid downscaling does that as part of the decode. */
     suspend fun renderPage(index: Int, targetWidth: Int, targetHeight: Int): ImageBitmap =
         withContext(Dispatchers.Default) {
             pageLock.withLock {

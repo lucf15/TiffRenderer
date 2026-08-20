@@ -1,17 +1,28 @@
+@file:OptIn(kotlinx.validation.ExperimentalBCVApi::class)
+
 import com.vanniktech.maven.publish.KotlinMultiplatform
+import kotlinx.validation.ApiValidationExtension
 
 plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.maven.publish)
     alias(libs.plugins.kotlinx.resources)
+    alias(libs.plugins.binary.compatibility.validator) apply false
 }
 
 group = "io.github.lucf15"
 version = System.getenv("VERSION") ?: "0.1.0-SNAPSHOT"
 
+val bcvKlibPipelineHostRecognized = System.getProperty("os.name").lowercase().contains("mac") ||
+        System.getProperty("os.arch").lowercase() in setOf("x86_64", "amd64")
+if (bcvKlibPipelineHostRecognized) {
+    apply(plugin = "org.jetbrains.kotlinx.binary-compatibility-validator")
+}
+
 kotlin {
     applyDefaultHierarchyTemplate()
+    explicitApi()
 
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -81,8 +92,22 @@ kotlin {
     }
 }
 
+if (bcvKlibPipelineHostRecognized) {
+    configure<ApiValidationExtension> {
+        klib {
+            enabled = true
+        }
+    }
+}
+
 tasks.named("jvmProcessResources") {
     dependsOn(project(":lib:native").tasks.named("buildTiffRendererJniForJvm"))
+}
+
+tasks.named<Jar>("jvmJar") {
+    manifest {
+        attributes("Implementation-Version" to version.toString())
+    }
 }
 
 mavenPublishing {

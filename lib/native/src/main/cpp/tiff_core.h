@@ -35,6 +35,10 @@ typedef enum {
     TIFFCORE_ERROR_IO = 1,             // caller should surface as IOException
     TIFFCORE_ERROR_INVALID_ARG = 2,    // caller should surface as IllegalArgumentException
     TIFFCORE_ERROR_ILLEGAL_STATE = 3,  // caller should surface as IllegalStateException
+    // Only ever returned by tiffcore_render_page/tiffcore_retain_raster: libtiff tolerated a
+    // decode error in some part of the page (e.g. one bad strip) and returned the rest of the
+    // raster anyway, instead of failing outright. Callers should treat this as success.
+    TIFFCORE_OK_PARTIAL = 4,
 } TiffCoreStatus;
 
 typedef enum {
@@ -88,11 +92,10 @@ TiffCoreStatus tiffcore_retain_raster(TiffCoreDocument* doc, int32_t pageIndex, 
 // Frees whatever tiffcore_retain_raster cached, if anything; safe to call unconditionally.
 void tiffcore_release_raster(TiffCoreDocument* doc);
 
-// Renders pageIndex into a caller-owned packed RGBA8888 buffer (dstPixels), reusing the
-// retainRaster() cache if it matches pageIndex, decoding fresh otherwise. dstStridePixels,
-// dstWidth, dstHeight describe dstPixels so clip bounds are re-validated here too. matrix is 6
-// affine coefficients (android.graphics.Matrix#getValues() order) mapping destination pixels to
-// source pixels. Pixels outside the clip or that map outside the source page are left untouched.
+// Renders pageIndex into dstPixels (packed RGBA8888), reusing the retainRaster() cache if it
+// matches pageIndex, decoding fresh otherwise. matrix is 6 affine coefficients
+// (android.graphics.Matrix#getValues() order); pixels outside the clip or the source page are
+// left untouched.
 TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, uint32_t* dstPixels,
         int32_t dstStridePixels, int32_t dstWidth, int32_t dstHeight, int32_t clipLeft,
         int32_t clipTop, int32_t clipRight, int32_t clipBottom, const float matrix[6],

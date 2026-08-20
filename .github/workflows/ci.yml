@@ -8,29 +8,31 @@ on:
       - "LICENSE"
   pull_request:
     branches: [main]
-    paths-ignore:
-      - "README.md"
-      - "LICENSE"
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   validate-wrapper:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: gradle/actions/wrapper-validation@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
   build-android:
     needs: validate-wrapper
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      TIFFRENDERER_WERROR: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
@@ -42,13 +44,13 @@ jobs:
       - name: Build sample app
         run: ./gradlew :sample:androidApp:assembleDebug
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sample-debug-apk
           path: sample/androidApp/build/outputs/apk/debug/androidApp-debug.apk
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: lib-debug-aar
           path: lib/core/build/outputs/aar/core.aar
@@ -61,7 +63,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: AVD cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: avd-cache
         with:
           path: |
@@ -71,7 +73,7 @@ jobs:
 
       - name: Create AVD snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -81,7 +83,7 @@ jobs:
           script: echo "Generated AVD snapshot for caching."
 
       - name: Run instrumented test suite
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
@@ -90,13 +92,6 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: ./gradlew :lib:core:connectedAndroidDeviceTest
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gradle-build-cache-android
-          path: ${{ env.GRADLE_USER_HOME }}/caches/build-cache-1
-          if-no-files-found: warn
-          retention-days: 1
 
   build-jvm:
     needs: validate-wrapper
@@ -124,27 +119,65 @@ jobs:
             java-distribution: zulu
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      TIFFRENDERER_WERROR: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: ${{ matrix.java-distribution }}
           java-version: "17"
           architecture: ${{ matrix.java-arch }}
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         if: contains(fromJSON('["ubuntu-24.04-arm", "windows-11-arm"]'), matrix.os)
         with:
           packages: ""
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       - run: ./gradlew :lib:core:jvmTest :sample:desktopApp:jar
 
-      - uses: actions/upload-artifact@v4
+      - name: Check JVM API surface (host-independent, pinned to one leg)
+        if: matrix.os == 'ubuntu-latest' && matrix.java-arch == 'x64'
+        run: ./gradlew :lib:core:jvmApiCheck
+
+      - name: Checksum the natives this job just built and tested
+        shell: bash
+        run: |
+          cd lib/native/build/jvm/natives
+          subdirs=()
+          while IFS= read -r dir; do
+            subdirs+=("$dir")
+          done < <(find . -mindepth 1 -maxdepth 1 -type d | sort)
+          if [ "${#subdirs[@]}" -ne 1 ]; then
+            echo "expected exactly one native subdir, found ${#subdirs[@]}: ${subdirs[*]}" >&2
+            exit 1
+          fi
+          cd "${subdirs[0]}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            find . -type f ! -name SHA256SUMS -exec sha256sum {} + > SHA256SUMS
+          else
+            find . -type f ! -name SHA256SUMS -exec shasum -a 256 {} + > SHA256SUMS
+          fi
+
+      - name: Attest build provenance for the native library this job built
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: |
+            lib/native/build/jvm/natives/*/*.dylib
+            lib/native/build/jvm/natives/*/*.so
+            lib/native/build/jvm/natives/*/*.dll
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jvm-natives-${{ matrix.os }}-${{ matrix.java-arch }}
           path: lib/native/build/jvm/natives/
@@ -155,8 +188,10 @@ jobs:
     needs: validate-wrapper
     runs-on: macos-latest
     timeout-minutes: 20
+    env:
+      TIFFRENDERER_WERROR: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
 
@@ -167,14 +202,7 @@ jobs:
           brew install cmake
           echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
 
-      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gradle-build-cache-ios
-          path: ${{ env.GRADLE_USER_HOME }}/caches/build-cache-1
-          if-no-files-found: warn
-          retention-days: 1
+      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test :lib:core:klibApiCheck
 
   semantic-release:
     needs: [build-android, build-jvm, build-ios]
@@ -189,22 +217,22 @@ jobs:
       new_release_published: ${{ steps.release.outputs.new_release_published }}
       new_release_version: ${{ steps.release.outputs.new_release_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: lts/*
 
       - id: release
-        uses: cycjimmy/semantic-release-action@v4
+        uses: cycjimmy/semantic-release-action@16ca923e6ccbb50770c415a0ccd43709a8c5f7a4 # v4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download sample APK
         if: steps.release.outputs.new_release_published == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sample-debug-apk
           path: release-assets
@@ -222,8 +250,13 @@ jobs:
     if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      attestations: read
+    outputs:
+      publish_attempted: ${{ steps.publish.outputs.attempted == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: v${{ needs.semantic-release.outputs.new_release_version }}
           submodules: recursive
@@ -236,21 +269,40 @@ jobs:
           echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
 
       - name: Download Linux/Windows JVM natives built by the build-jvm matrix
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: jvm-natives-*
           path: lib/native/build/jvm/natives
           merge-multiple: true
 
-      - name: Reuse the Gradle build cache from build-android/build-ios
-        uses: actions/download-artifact@v4
-        with:
-          pattern: gradle-build-cache-*
-          path: ${{ env.GRADLE_USER_HOME }}/caches/build-cache-1
-          merge-multiple: true
-          if-no-files-found: warn
+      - name: Verify downloaded natives are internally consistent (not corrupted in transit)
+        run: |
+          cd lib/native/build/jvm/natives
+          for name in linux-x86_64 linux-aarch64 windows-x86_64 windows-aarch64 macos-x86_64 macos-aarch64; do
+            [ -d "$name" ] || { echo "missing natives for $name" >&2; exit 1; }
+          done
+          for dir in */; do
+            (cd "$dir" && shasum -a 256 -c SHA256SUMS --strict)
+          done
+
+      - name: Verify downloaded natives match build-jvm's attested provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd lib/native/build/jvm/natives
+          verified=0
+          for f in */*.dylib */*.so */*.dll; do
+            [ -f "$f" ] || continue
+            gh attestation verify "$f" --repo "${{ github.repository }}"
+            verified=$((verified + 1))
+          done
+          if [ "$verified" -ne 6 ]; then
+            echo "expected to verify 6 native libraries, verified $verified" >&2
+            exit 1
+          fi
 
       - name: Publish to Maven Central
+        id: publish
         env:
           VERSION: ${{ needs.semantic-release.outputs.new_release_version }}
           TIFFRENDERER_SKIP_JVM_NATIVE_BUILD: "true"
@@ -259,11 +311,16 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
-        run: ./gradlew publishToMavenCentral
+        run: |
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
+          ./gradlew publishToMavenCentral
 
   rollback-release:
     needs: [semantic-release, publish-central]
-    if: always() && needs.semantic-release.outputs.new_release_published == 'true' && needs.publish-central.result == 'failure'
+    if: >-
+      always() && needs.semantic-release.outputs.new_release_published == 'true'
+      && needs.publish-central.result == 'failure'
+      && needs.publish-central.outputs.publish_attempted != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -274,3 +331,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete "v${{ needs.semantic-release.outputs.new_release_version }}" --repo ${{ github.repository }} --yes --cleanup-tag
+
+  alert-publish-failure-after-upload-attempt:
+    needs: [semantic-release, publish-central]
+    if: >-
+      always() && needs.semantic-release.outputs.new_release_published == 'true'
+      && needs.publish-central.result == 'failure'
+      && needs.publish-central.outputs.publish_attempted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail loudly without touching the tag or release
+        run: |
+          echo "publish-central failed after the Maven Central upload step started. Central versions are immutable, so the tag/release are left in place: check the Central Portal deployment for v${{ needs.semantic-release.outputs.new_release_version }} by hand before deciding what to do." >&2
+          exit 1

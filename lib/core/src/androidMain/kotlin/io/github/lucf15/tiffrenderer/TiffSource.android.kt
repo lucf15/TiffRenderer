@@ -5,31 +5,34 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
-actual class TiffSource private constructor(
+public actual class TiffSource private constructor(
     internal val pfd: ParcelFileDescriptor,
     internal val size: Long,
 ) {
     internal val fd: Int get() = pfd.fd
-    internal actual var consumed: Boolean = false
+    private val consumedFlag = AtomicBoolean(false)
+    private val releasedFlag = AtomicBoolean(false)
 
-    actual fun release() {
+    internal actual fun markConsumed(): Boolean = consumedFlag.compareAndSet(false, true)
+
+    internal actual fun release() {
+        if (!releasedFlag.compareAndSet(false, true)) return
         try {
             pfd.close()
         } catch (ignored: IOException) {
         }
     }
 
-    companion object {
-        fun fromFileDescriptor(fd: Int, size: Long): TiffSource =
+    public companion object {
+        public fun fromFileDescriptor(fd: Int, size: Long): TiffSource =
             TiffSource(ParcelFileDescriptor.adoptFd(fd), size)
 
-        /** Android-only convenience: wrap an existing [ParcelFileDescriptor] directly, avoiding
-         * an fd adopt/detach round-trip for callers (e.g. from a `ContentResolver`) that already
-         * have one. Stats it to recover the size, since this entry point (unlike
-         * [fromFileDescriptor]) doesn't take one as a parameter. Takes ownership: the owning
-         * [TiffRenderer]'s close path closes this [pfd] too, so don't reuse it afterward. */
-        fun fromParcelFileDescriptor(pfd: ParcelFileDescriptor): TiffSource {
+        /** Android-only convenience: wraps an existing [ParcelFileDescriptor] (e.g. from a
+         * `ContentResolver`), stat'd for its size. Takes ownership: the owning [TiffRenderer]'s
+         * close path closes this [pfd] too. */
+        public fun fromParcelFileDescriptor(pfd: ParcelFileDescriptor): TiffSource {
             val size = try {
                 Os.lseek(pfd.fileDescriptor, 0, OsConstants.SEEK_SET)
                 Os.fstat(pfd.fileDescriptor).st_size

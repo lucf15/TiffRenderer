@@ -4,12 +4,12 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.Rect
 
-fun Rect.toTiffRect(): TiffRect = TiffRect(left, top, right, bottom)
+public fun Rect.toTiffRect(): TiffRect = TiffRect(left, top, right, bottom)
 
 /** Converts an affine [Matrix] to [TiffTransform]. Throws [IllegalArgumentException] if [this]
  * has a non-identity perspective row, since [TiffTransform] can only represent an affine
  * transform. */
-fun Matrix.toTiffTransform(): TiffTransform {
+public fun Matrix.toTiffTransform(): TiffTransform {
     val values = FloatArray(9)
     getValues(values)
     require(values[6] == 0f && values[7] == 0f && values[8] == 1f) {
@@ -21,9 +21,12 @@ fun Matrix.toTiffTransform(): TiffTransform {
 /** Android-native overload of [TiffPage.render], taking the platform [Bitmap]/[Rect]/[Matrix]
  * types directly instead of [TiffBitmap]/[TiffRect]/[TiffTransform]; mirrors
  * `PdfRenderer.Page#render`'s own signature shape. */
-fun TiffPage.render(
+public fun TiffPage.render(
     destination: Bitmap,
     destClip: Rect? = null,
     transform: Matrix? = null,
     renderMode: TiffRenderMode = TiffRenderMode.FOR_DISPLAY,
-) = render(TiffBitmap(destination), destClip?.toTiffRect(), transform?.toTiffTransform(), renderMode)
+    onPartialDecode: (() -> Unit)? = null,
+): Unit = render(
+    TiffBitmap(destination), destClip?.toTiffRect(), transform?.toTiffTransform(), renderMode, onPartialDecode,
+)

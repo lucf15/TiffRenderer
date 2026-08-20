@@ -3,27 +3,51 @@ package io.github.lucf15.tiffrenderer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** Backed by a direct (off-heap) [ByteBuffer], not a JVM `IntArray`: [TiffCoreBinding]'s native
- * render call writes straight into it via `GetDirectBufferAddress`, so there's no JVM-heap array
- * for the JNI layer to pin or copy, and nothing for GC to have to work around during a render. */
-actual class TiffBitmap(actual val width: Int, actual val height: Int) {
-    init {
-        require(width > 0 && height > 0) { "width/height must be positive, got ${width}x$height" }
-        require(width.toLong() * height.toLong() * 4 <= Int.MAX_VALUE) {
-            "width * height overflows Int, got ${width}x$height"
+/** Backed by a direct (off-heap) [ByteBuffer], not a JVM `IntArray`, so a native render call
+ * writes straight into it with no JVM-heap copy. That memory is GC'd, not deterministically
+ * freed (see the JVM section of the project README); prefer [wrapping] to reuse one buffer
+ * across repeated renders instead of allocating fresh each time. */
+public actual class TiffBitmap private constructor(
+    public actual val width: Int,
+    public actual val height: Int,
+    internal val buffer: ByteBuffer,
+) {
+    public companion object {
+        public operator fun invoke(width: Int, height: Int): TiffBitmap {
+            requirePositiveNonOverflowingDimensions(width, height)
+            return TiffBitmap(width, height, ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder()))
+        }
+
+        /** Wraps an existing direct [buffer] instead of allocating a new one, so a caller that
+         * renders the same page (or same display size) repeatedly can reuse one off-heap
+         * allocation across calls rather than depending on GC to reclaim each render's buffer.
+         * Takes [buffer] from its current position: pass a slice or a positioned view to render
+         * into a sub-region of a larger arena. */
+        public fun wrapping(buffer: ByteBuffer, width: Int, height: Int): TiffBitmap {
+            requirePositiveNonOverflowingDimensions(width, height)
+            require(buffer.isDirect) { "TiffBitmap.wrapping requires a direct ByteBuffer" }
+            require(buffer.remaining() >= width * height * 4) {
+                "buffer has ${buffer.remaining()} bytes remaining, too small for ${width}x$height"
+            }
+            // slice(), not duplicate(): duplicate() keeps the same base address and ignores
+            // position, so a caller passing an offset view of a larger arena would silently
+            // render at the arena's start instead of at that offset.
+            return TiffBitmap(width, height, buffer.slice().order(ByteOrder.nativeOrder()))
+        }
+
+        private fun requirePositiveNonOverflowingDimensions(width: Int, height: Int) {
+            require(width > 0 && height > 0) { "width/height must be positive, got ${width}x$height" }
+            require(width.toLong() * height.toLong() * 4 <= Int.MAX_VALUE) {
+                "width * height overflows Int, got ${width}x$height"
+            }
         }
     }
-
-    internal val buffer: ByteBuffer =
-        ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
 }
 
-/** Escape hatch for UI-layer code that needs the rendered pixels as packed ARGB ints (this
- * library's own [pixelAt] convention). Returns a copy, not the live backing buffer, so callers
- * can't corrupt a page mid-render by holding onto it. Prefer [toByteArray] when the consumer wants
- * raw RGBA8888 bytes anyway (e.g. handing them to a Skia bitmap) -- this repacks every pixel
- * through an Int, [toByteArray] doesn't. */
-fun TiffBitmap.toIntArray(): IntArray {
+/** Escape hatch for UI-layer code that wants the rendered pixels as packed ARGB ints (this
+ * library's own [pixelAt] convention), as a copy so callers can't corrupt a page mid-render by
+ * holding onto it. Prefer [toByteArray] when raw RGBA8888 bytes suffice; this repacks per pixel. */
+public fun TiffBitmap.toIntArray(): IntArray {
     val bytes = toByteArray()
     val result = IntArray(width * height)
     for (i in result.indices) {
@@ -37,17 +61,17 @@ fun TiffBitmap.toIntArray(): IntArray {
     return result
 }
 
-/** Escape hatch for UI-layer code (e.g. `:sample:shared`) that wants the raw RGBA8888 bytes
- * directly, matching Skia's `ColorType.RGBA_8888` byte order exactly -- no per-pixel repacking.
- * Returns a copy via an independent buffer view, so callers can't corrupt a page mid-render by
- * holding onto it, and this read never disturbs [buffer]'s own position/limit. */
-fun TiffBitmap.toByteArray(): ByteArray {
-    val bytes = ByteArray(buffer.capacity())
-    buffer.duplicate().apply { rewind() }.get(bytes)
+/** Escape hatch for UI-layer code (e.g. `:sample:shared`) that wants the raw RGBA8888 bytes,
+ * matching Skia's `ColorType.RGBA_8888` byte order with no per-pixel repacking. Returns a copy
+ * via an independent buffer view, so it can't be used to corrupt a page mid-render. */
+public fun TiffBitmap.toByteArray(): ByteArray {
+    val byteCount = width * height * 4
+    val bytes = ByteArray(byteCount)
+    buffer.duplicate().apply { position(0); limit(byteCount) }.get(bytes)
     return bytes
 }
 
-actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
+public actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
 
 internal actual fun TiffBitmap.pixelAt(x: Int, y: Int): Int {
     val offset = (y * width + x) * 4

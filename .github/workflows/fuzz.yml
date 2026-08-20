@@ -1,0 +1,70 @@
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - name: Install a Clang with the libFuzzer runtime (Apple's Xcode clang doesn't ship one)
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - uses: ./.github/actions/setup-android-toolchain
+
+      - name: Configure and build tiff_fuzz
+        working-directory: lib/native/src/main/cpp
+        run: |
+          cmake -S . -B build-fuzz -DTIFFRENDERER_FUZZ=ON \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DJAVA_HOME="${JAVA_HOME}"
+          cmake --build build-fuzz --target tiff_fuzz -j
+
+      - name: Restore the accumulated fuzz corpus
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: /tmp/fuzz-corpus
+          key: tiff-fuzz-corpus-${{ github.run_id }}
+          restore-keys: tiff-fuzz-corpus-
+
+      - name: Run tiff_fuzz against the accumulated corpus
+        working-directory: lib/native/src/main/cpp
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          mkdir -p /tmp/fuzz-artifacts /tmp/fuzz-corpus
+          pad=$(grep -oP 'kControlBytes = \K[0-9]+' fuzz/tiff_fuzz.cpp)
+          for f in "${GITHUB_WORKSPACE}"/lib/core/src/commonTest/resources/*.tif "${GITHUB_WORKSPACE}"/lib/core/src/commonTest/resources/*.bin; do
+            [ -f "$f" ] || continue
+            dest="/tmp/fuzz-corpus/$(basename "$f")"
+            [ -e "$dest" ] && continue
+            cat "$f" > "$dest"
+            head -c "$pad" /dev/zero >> "$dest"
+          done
+          ./build-fuzz/tiff_fuzz -max_total_time=1800 -rss_limit_mb=4096 \
+            -artifact_prefix=/tmp/fuzz-artifacts/ /tmp/fuzz-corpus
+
+      - name: Upload crashers
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-crashers
+          path: /tmp/fuzz-artifacts/
+          if-no-files-found: warn
+
+      - name: Save the fuzz corpus even if tiff_fuzz found a crasher
+        if: always()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: /tmp/fuzz-corpus
+          key: tiff-fuzz-corpus-${{ github.run_id }}

@@ -1,21 +1,27 @@
 package io.github.lucf15.tiffrenderer
 
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
-actual class TiffSource private constructor(
+public actual class TiffSource private constructor(
     internal val path: String?,
     internal var bytes: ByteArray?,
 ) {
-    internal actual var consumed: Boolean = false
+    private val consumedFlag = AtomicBoolean(false)
+    private val releasedFlag = AtomicBoolean(false)
 
-    actual fun release() {
+    internal actual fun markConsumed(): Boolean = consumedFlag.compareAndSet(false, true)
+
+    internal actual fun release() {
+        // No real resource to free here (path/bytes need no cleanup); keeps the same once-only contract Android/iOS enforce.
+        releasedFlag.compareAndSet(false, true)
     }
 
-    companion object {
-        fun fromPath(path: String): TiffSource = TiffSource(path, null)
+    public companion object {
+        public fun fromPath(path: String): TiffSource = TiffSource(path, null)
 
-        fun fromFile(file: File): TiffSource = TiffSource(file.absolutePath, null)
+        public fun fromFile(file: File): TiffSource = TiffSource(file.absolutePath, null)
 
-        fun fromByteArray(bytes: ByteArray): TiffSource = TiffSource(null, bytes)
+        public fun fromByteArray(bytes: ByteArray): TiffSource = TiffSource(null, bytes)
     }
 }

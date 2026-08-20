@@ -44,6 +44,11 @@ build_target() {
   sysroot="$(xcrun --sdk "$sdk" --show-sdk-path)"
   build_dir="$(mktemp -d)"
 
+  local werror_arg=""
+  if [[ "${TIFFRENDERER_WERROR:-}" == "true" ]]; then
+    werror_arg="-DTIFFRENDERER_WERROR=ON"
+  fi
+
   echo "=== ${target_name} (sdk=${sdk} arch=${arch}) ==="
   "$CMAKE_BIN" -G Xcode \
     -S "$SCRIPT_DIR" \
@@ -52,7 +57,8 @@ build_target() {
     -DCMAKE_OSX_ARCHITECTURES="$arch" \
     -DCMAKE_OSX_SYSROOT="$sysroot" \
     -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
-    -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+    -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+    ${werror_arg}
 
   "$CMAKE_BIN" --build "$build_dir" --target tiffrenderer_core --config Release
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds the desktop JNI shim (tiffrenderer_jni_jvm) for whatever OS/arch runs this script -- no
-# cross-compilation, always host-native. :lib:core's buildTiffRendererJniForJvm Gradle task runs
-# this automatically before jvm resource processing.
+# Builds the desktop JNI shim (tiffrenderer_jni_jvm) for whatever OS/arch runs this script, always
+# host-native, never cross-compiled. :lib:core's buildTiffRendererJniForJvm Gradle task runs this
+# automatically before jvm resource processing.
 #
 # Args: $1 output dir (default: this module's own build/jvm/natives), $2 JAVA_HOME override
 # (default: $JAVA_HOME), needed for CMake's find_package(JNI).
@@ -39,9 +39,8 @@ case "$(uname -s)" in
 esac
 
 # Derived from the JDK's own reported os.arch, not uname -m: they can genuinely differ (e.g. an
-# x64 JDK running under Windows-on-ARM's x64 emulation on an aarch64 host) -- os.arch is exactly
-# what TiffRendererNativeJvm.kt matches against at runtime, so the build must target that, not
-# whatever CPU happens to be running this script.
+# x64 JDK running under Windows-on-ARM's x64 emulation), and os.arch is what
+# TiffRendererNativeJvm.kt matches against at runtime, so the build must target that.
 JAVA_ARCH="$("${JAVA_HOME_OVERRIDE}/bin/java" -XshowSettings:properties -version 2>&1 | grep -o 'os\.arch = .*' | awk '{print $3}')"
 case "$JAVA_ARCH" in
   arm64|aarch64) ARCH_NAME="aarch64" ;;
@@ -59,8 +58,14 @@ TARGET_DIR="${OUT_DIR}/${OS_NAME}-${ARCH_NAME}"
 mkdir -p "$TARGET_DIR"
 
 build_dir="$(mktemp -d)"
+trap 'rm -rf "$build_dir"' EXIT
 echo "Using cmake: ${CMAKE_BIN} ($("$CMAKE_BIN" --version | head -1))"
 echo "Targeting JDK arch: ${ARCH_NAME} (os.arch=${JAVA_ARCH})"
+
+WERROR_CMAKE_ARG=""
+if [[ "${TIFFRENDERER_WERROR:-}" == "true" ]]; then
+  WERROR_CMAKE_ARG="-DTIFFRENDERER_WERROR=ON"
+fi
 
 if [[ "$OS_NAME" == "windows" ]]; then
   # CMake's own "Visual Studio" generator picks its C/C++ toolset by matching the *host* CPU
@@ -116,7 +121,7 @@ if [[ "$OS_NAME" == "windows" ]]; then
   cat > "$wrapper_bat" <<BATEOF
 call "${VS_INSTALL_PATH}\\VC\\Auxiliary\\Build\\vcvarsall.bat" ${VCVARSALL_ARG}
 if errorlevel 1 exit /b 1
-cmake -G "NMake Makefiles" -S "${script_dir_win}" -B "${build_dir_win}" -DJAVA_HOME="${JAVA_HOME_FORWARD_SLASHES}" -DCMAKE_BUILD_TYPE=Release ${VCPKG_CMAKE_ARGS}
+cmake -G "NMake Makefiles" -S "${script_dir_win}" -B "${build_dir_win}" -DJAVA_HOME="${JAVA_HOME_FORWARD_SLASHES}" -DCMAKE_BUILD_TYPE=Release ${WERROR_CMAKE_ARG} ${VCPKG_CMAKE_ARGS}
 if errorlevel 1 exit /b 1
 cmake --build "${build_dir_win}" --target tiffrenderer_jni_jvm --config Release
 if errorlevel 1 exit /b 1
@@ -139,6 +144,9 @@ else
       CMAKE_ARCH_ARGS=("-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
       ;;
   esac
+  if [[ -n "$WERROR_CMAKE_ARG" ]]; then
+    CMAKE_ARCH_ARGS+=("$WERROR_CMAKE_ARG")
+  fi
   "$CMAKE_BIN" -S "$SCRIPT_DIR" -B "$build_dir" -DJAVA_HOME="$JAVA_HOME_OVERRIDE" -DCMAKE_BUILD_TYPE=Release "${CMAKE_ARCH_ARGS[@]}"
   "$CMAKE_BIN" --build "$build_dir" --target tiffrenderer_jni_jvm --config Release -j
 fi
@@ -149,6 +157,13 @@ if [[ -z "$lib" ]]; then
   exit 1
 fi
 cp "$lib" "${TARGET_DIR}/${LIB_NAME}"
-rm -rf "$build_dir" || true
+
+# .sha256 sidecar, bundled as a jvmMain resource alongside the .so/.dylib/.dll: read at runtime by
+# TiffRendererNativeJvm to verify an already-extracted native before trusting it (see loadNativeLibrary).
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "${TARGET_DIR}/${LIB_NAME}" | awk '{print $1}' > "${TARGET_DIR}/${LIB_NAME}.sha256"
+else
+  shasum -a 256 "${TARGET_DIR}/${LIB_NAME}" | awk '{print $1}' > "${TARGET_DIR}/${LIB_NAME}.sha256"
+fi
 
 echo "Done. Output in ${TARGET_DIR}/${LIB_NAME}"

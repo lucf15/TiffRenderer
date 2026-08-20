@@ -121,31 +121,31 @@ void nativeOpenPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageI
     env->SetIntArrayRegion(outSize, 0, 2, size);
 }
 
-void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
+jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
         jobject bitmap, jint clipLeft, jint clipTop, jint clipRight, jint clipBottom,
         jfloatArray matrixValues, jint renderMode) {
     if (!requireDocument(env, documentPtr)) {
-        return;
+        return JNI_FALSE;
     }
     if (bitmap == nullptr) {
         throwException(env, "java/lang/IllegalArgumentException", "destination cannot be null");
-        return;
+        return JNI_FALSE;
     }
     if (matrixValues == nullptr || env->GetArrayLength(matrixValues) < 9) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "matrixValues must have 9 elements");
-        return;
+        return JNI_FALSE;
     }
 
     AndroidBitmapInfo info;
     if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
         throwException(env, "java/lang/IllegalStateException", "cannot read destination bitmap info");
-        return;
+        return JNI_FALSE;
     }
     if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "destination bitmap must be ARGB_8888");
-        return;
+        return JNI_FALSE;
     }
 
     jfloat matrix[9];
@@ -154,7 +154,7 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
     void* pixels = nullptr;
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) {
         throwException(env, "java/lang/IllegalStateException", "cannot lock destination bitmap");
-        return;
+        return JNI_FALSE;
     }
 
     char errBuf[kErrBufSize] = {};
@@ -168,23 +168,30 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
 
     AndroidBitmap_unlockPixels(env, bitmap);
 
-    if (status != TIFFCORE_OK) {
+    // TIFFCORE_OK_PARTIAL means libtiff tolerated a decode error in part of the page (e.g. one bad
+    // strip) and returned the rest of the raster anyway; treated as success, reported to the
+    // caller via the return value instead of an exception.
+    if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
         throwForStatus(env, status, errBuf, "failed to render TIFF page");
+        return JNI_FALSE;
     }
+    return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
 }
 
 // Decodes pageIndex now and caches it so subsequent nativeRenderPage calls reuse it; see
 // Page#retainRaster().
-void nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex) {
+jboolean nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex) {
     if (!requireDocument(env, documentPtr)) {
-        return;
+        return JNI_FALSE;
     }
     char errBuf[kErrBufSize] = {};
     const TiffCoreStatus status = tiffcore_retain_raster(asDocument(documentPtr), pageIndex,
             errBuf, sizeof(errBuf));
-    if (status != TIFFCORE_OK) {
+    if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
         throwForStatus(env, status, errBuf, "failed to decode TIFF page");
+        return JNI_FALSE;
     }
+    return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
 }
 
 // Frees whatever nativeRetainRaster cached; safe for Page#close() to call unconditionally.
@@ -196,17 +203,24 @@ void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
     tiffcore_release_raster(asDocument(documentPtr));
 }
 
+// JNINativeMethod's name/signature fields are plain char* per the JNI spec (not const char*), so
+// every string literal below needs an explicit const_cast rather than an implicit (and, under
+// -Werror, rejected) literal-to-char* conversion.
+#define JNI_STR(s) const_cast<char*>(s)
+
 const JNINativeMethod gMethods[] = {
-        {"nativeOpen", "(IJ)J", reinterpret_cast<void*>(nativeOpen)},
-        {"nativeClose", "(J)V", reinterpret_cast<void*>(nativeClose)},
-        {"nativeGetPageCount", "(J)I", reinterpret_cast<void*>(nativeGetPageCount)},
-        {"nativeOpenPage", "(JI[I)V", reinterpret_cast<void*>(nativeOpenPage)},
-        {"nativeRenderPage",
-                "(JILandroid/graphics/Bitmap;IIII[FI)V",
+        {JNI_STR("nativeOpen"), JNI_STR("(IJ)J"), reinterpret_cast<void*>(nativeOpen)},
+        {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeClose)},
+        {JNI_STR("nativeGetPageCount"), JNI_STR("(J)I"), reinterpret_cast<void*>(nativeGetPageCount)},
+        {JNI_STR("nativeOpenPage"), JNI_STR("(JI[I)V"), reinterpret_cast<void*>(nativeOpenPage)},
+        {JNI_STR("nativeRenderPage"),
+                JNI_STR("(JILandroid/graphics/Bitmap;IIII[FI)Z"),
                 reinterpret_cast<void*>(nativeRenderPage)},
-        {"nativeRetainRaster", "(JI)V", reinterpret_cast<void*>(nativeRetainRaster)},
-        {"nativeReleaseRaster", "(J)V", reinterpret_cast<void*>(nativeReleaseRaster)},
+        {JNI_STR("nativeRetainRaster"), JNI_STR("(JI)Z"), reinterpret_cast<void*>(nativeRetainRaster)},
+        {JNI_STR("nativeReleaseRaster"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeReleaseRaster)},
 };
+
+#undef JNI_STR
 
 }  // namespace
 
