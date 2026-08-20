@@ -42,4 +42,13 @@ class TiffRendererNativeJvmParsingTest {
     fun archName_unrecognized_throwsUnsatisfiedLinkError() {
         assertFailsWith<UnsatisfiedLinkError> { archName("riscv64") }
     }
+
+    @Test
+    fun stableNativeDir_buildsContentHashAndArchScopedPath() {
+        val homeDir = java.nio.file.Paths.get("home", "user").toString()
+        assertEquals(
+            java.nio.file.Paths.get(homeDir, ".tiffrenderer", "abc123", "macos-aarch64"),
+            stableNativeDir(homeDir, "abc123", "macos", "aarch64"),
+        )
+    }
 }

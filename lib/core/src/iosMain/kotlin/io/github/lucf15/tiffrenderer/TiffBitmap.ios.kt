@@ -1,9 +1,9 @@
 package io.github.lucf15.tiffrenderer
 
-actual class TiffBitmap(actual val width: Int, actual val height: Int) {
+public actual class TiffBitmap(public actual val width: Int, public actual val height: Int) {
     init {
         require(width > 0 && height > 0) { "width/height must be positive, got ${width}x$height" }
-        require(width.toLong() * height.toLong() <= Int.MAX_VALUE) {
+        require(width.toLong() * height.toLong() * 4 <= Int.MAX_VALUE) {
             "width * height overflows Int, got ${width}x$height"
         }
     }
@@ -15,9 +15,9 @@ actual class TiffBitmap(actual val width: Int, actual val height: Int) {
 
 /** Escape hatch for UI-layer code that needs the rendered pixels. Returns a copy, not the live
  * backing array, so callers can't corrupt a page mid-render by holding onto it. */
-fun TiffBitmap.toIntArray(): IntArray = pixels.copyOf()
+public fun TiffBitmap.toIntArray(): IntArray = pixels.copyOf()
 
-actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
+public actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
 
 internal actual fun TiffBitmap.pixelAt(x: Int, y: Int): Int {
     val p = pixels[y * width + x]

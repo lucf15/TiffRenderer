@@ -66,6 +66,22 @@ class TiffRendererLifecycleTest {
     }
 
     @Test
+    fun openPage_indexPastPageCount_withoutPageCountQueriedFirst_stillThrowsAndRendererRecovers() {
+        // Deliberately doesn't touch renderer.pageCount first, so _pageCount is still the -1
+        // sentinel when openPage runs: exercises the fallback path that walks the full directory
+        // chain only after TiffCoreBinding.openPage's native seek fails, not the fast path where
+        // the bound is already cached.
+        open("varying_page_dimensions.tif").use { renderer ->
+            assertFailsWith<IllegalArgumentException> { renderer.openPage(5) }
+            // Proves the underlying TIFF* survives a failed TIFFSetDirectory followed by the
+            // TIFFNumberOfDirectories walk: this renderer is still fully usable afterward.
+            val page = renderer.openPage(0)
+            assertEquals(0, page.index)
+            page.close()
+        }
+    }
+
+    @Test
     fun openPage_whileAnotherPageOpen_throwsIllegalStateException() {
         open("varying_page_dimensions.tif").use { renderer ->
             val page = renderer.openPage(0)

@@ -16,8 +16,3 @@ internal fun requireClipInBounds(clip: TiffRect, destWidth: Int, destHeight: Int
         "destClip not in destination bounds"
     }
 }
-
-/** Mirrors `PdfRenderer#openPage`'s own index validation. */
-internal fun requirePageIndexInBounds(index: Int, pageCount: Int) {
-    require(index in 0 until pageCount) { "Invalid page index" }
-}

@@ -2,13 +2,24 @@ package io.github.lucf15.tiffrenderer
 
 import java.io.IOException
 
-/** [lock] serializes native calls made through this handle: libtiff's own error/warning callback
- * writes to a thread_local buffer, so it doesn't need serializing, but a TIFF*'s directory cursor
- * (mutated by e.g. TIFFSetDirectory) isn't safe for concurrent use from two threads at once.
- * Scoped per document rather than process-wide so two unrelated [TiffRenderer]s don't block each
- * other's decodes. */
-actual class TiffCoreHandle internal constructor(internal val ptr: Long) {
-    internal val lock: Any = Any()
+/** [lock] serializes native calls per document (a TIFF*'s directory cursor isn't thread-safe).
+ * [ptr] zeroes under the same lock on close, so a blocked call sees a closed handle instead of a
+ * freed pointer. */
+internal actual class TiffCoreHandle internal constructor(private var ptr: Long) {
+    private val lock: Any = Any()
+
+    internal fun <T> use(block: (Long) -> T): T = synchronized(lock) {
+        check(ptr != 0L) { "TIFF document is not open" }
+        block(ptr)
+    }
+
+    internal fun closeOnce(free: (Long) -> Unit) = synchronized(lock) {
+        val p = ptr
+        if (p != 0L) {
+            ptr = 0L
+            free(p)
+        }
+    }
 }
 
 /** Binds [TiffCoreBinding] to the JNI layer ([TiffRendererNative]). */
@@ -17,16 +28,16 @@ internal actual object TiffCoreBinding {
         TiffCoreHandle(rethrowingIOException { TiffRendererNative.nativeOpen(source.fd, source.size) })
 
     actual fun close(handle: TiffCoreHandle) {
-        synchronized(handle.lock) { TiffRendererNative.nativeClose(handle.ptr) }
+        handle.closeOnce { ptr -> TiffRendererNative.nativeClose(ptr) }
     }
 
     actual fun getPageCount(handle: TiffCoreHandle): Int =
-        synchronized(handle.lock) { TiffRendererNative.nativeGetPageCount(handle.ptr) }
+        handle.use { ptr -> TiffRendererNative.nativeGetPageCount(ptr) }
 
     actual fun openPage(handle: TiffCoreHandle, index: Int): TiffCorePageSize {
         val outSize = IntArray(2)
-        synchronized(handle.lock) {
-            rethrowingIOException { TiffRendererNative.nativeOpenPage(handle.ptr, index, outSize) }
+        handle.use { ptr ->
+            rethrowingIOException { TiffRendererNative.nativeOpenPage(ptr, index, outSize) }
         }
         return TiffCorePageSize(outSize[0], outSize[1])
     }
@@ -38,7 +49,8 @@ internal actual object TiffCoreBinding {
         clip: TiffRect,
         transform: TiffTransform,
         mode: TiffRenderMode,
-    ) {
+    ): Boolean {
+        require(!destination.bitmap.isRecycled) { "TiffBitmap wraps a recycled Bitmap" }
         // nativeRenderPage wants the full 3x3 (9 floats); TiffTransform only carries the 6
         // affine ones, so pad the always-identity perspective row back on.
         val matrixValues = floatArrayOf(
@@ -50,10 +62,10 @@ internal actual object TiffCoreBinding {
             TiffRenderMode.FOR_DISPLAY -> 1
             TiffRenderMode.FOR_PRINT -> 2
         }
-        synchronized(handle.lock) {
+        return handle.use { ptr ->
             rethrowingIOException {
                 TiffRendererNative.nativeRenderPage(
-                    handle.ptr, index, destination.bitmap,
+                    ptr, index, destination.bitmap,
                     clip.left, clip.top, clip.right, clip.bottom,
                     matrixValues, nativeMode,
                 )
@@ -61,14 +73,13 @@ internal actual object TiffCoreBinding {
         }
     }
 
-    actual fun retainRaster(handle: TiffCoreHandle, index: Int) {
-        synchronized(handle.lock) {
-            rethrowingIOException { TiffRendererNative.nativeRetainRaster(handle.ptr, index) }
+    actual fun retainRaster(handle: TiffCoreHandle, index: Int): Boolean =
+        handle.use { ptr ->
+            rethrowingIOException { TiffRendererNative.nativeRetainRaster(ptr, index) }
         }
-    }
 
     actual fun releaseRaster(handle: TiffCoreHandle) {
-        synchronized(handle.lock) { TiffRendererNative.nativeReleaseRaster(handle.ptr) }
+        handle.use { ptr -> TiffRendererNative.nativeReleaseRaster(ptr) }
     }
 }
 

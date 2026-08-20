@@ -264,6 +264,38 @@ def main():
             ["tiffcp", "-c", codec, *extra_args, src, os.path.join(OUT_DIR, dst)], check=True
         )
 
+    # Multi-strip LZW image (6 horizontal color bands, one per strip) with a few bytes flipped
+    # inside one middle strip's compressed data: corrupt enough to make that strip's LZW decode
+    # hit an invalid code (libtiff logs it, doesn't abort), but the IFD/other strips stay intact.
+    # With stopOnError=0 (see tiff_core.cpp's decodePage) TIFFReadRGBAImageOriented tolerates this
+    # and returns the rest of the raster anyway, so decodePage's caller reports TIFFCORE_OK_PARTIAL
+    # for it, not a failure. Confirmed empirically: the other 5 strips decode to their exact
+    # intended colors, only the corrupted strip's rows come out wrong.
+    band_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
+    band_rows = bytearray()
+    for band_index in range(6):
+        r, g, b = band_colors[band_index]
+        band_rows += bytes([r, g, b]) * 32 * 8
+    band_path = os.path.join(OUT_DIR, "_base_bands.tif")
+    write_tiff(band_path, [{
+        "width": 32,
+        "height": 48,
+        "samples_per_pixel": 3,
+        "photometric": 2,
+        "pixel_bytes": bytes(band_rows),
+    }])
+    multi_strip_path = os.path.join(OUT_DIR, "_multi_strip_lzw.tif")
+    tiffcp("lzw", band_path, "_multi_strip_lzw.tif", extra_args=["-r", "8"])
+    with open(multi_strip_path, "rb") as f:
+        multi_strip_bytes = bytearray(f.read())
+    corrupt_start, corrupt_len = 242, 20  # well inside strip index 3's compressed data
+    for i in range(corrupt_start + 15, corrupt_start + 15 + corrupt_len):
+        multi_strip_bytes[i] ^= 0xFF
+    with open(os.path.join(OUT_DIR, "partially_corrupt.tif"), "wb") as f:
+        f.write(multi_strip_bytes)
+    os.remove(band_path)
+    os.remove(multi_strip_path)
+
     tiffcp("none", base_rgb, "supported_uncompressed.tif")
     tiffcp("lzw", base_rgb, "supported_lzw.tif")
     tiffcp("packbits", base_rgb, "supported_packbits.tif")

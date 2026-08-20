@@ -1,0 +1,74 @@
+public final class io/github/lucf15/tiffrenderer/TiffBitmap {
+	public static final field Companion Lio/github/lucf15/tiffrenderer/TiffBitmap$Companion;
+	public synthetic fun <init> (IILjava/nio/ByteBuffer;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getHeight ()I
+	public final fun getWidth ()I
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffBitmap$Companion {
+	public final fun invoke (II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
+	public final fun wrapping (Ljava/nio/ByteBuffer;II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffBitmap_jvmKt {
+	public static final fun createTiffBitmap (II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
+	public static final fun toByteArray (Lio/github/lucf15/tiffrenderer/TiffBitmap;)[B
+	public static final fun toIntArray (Lio/github/lucf15/tiffrenderer/TiffBitmap;)[I
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffIOException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffPage : java/lang/AutoCloseable {
+	public fun close ()V
+	public final fun getHeight ()I
+	public final fun getIndex ()I
+	public final fun getWidth ()I
+	public final fun render (Lio/github/lucf15/tiffrenderer/TiffBitmap;Lio/github/lucf15/tiffrenderer/TiffRect;Lio/github/lucf15/tiffrenderer/TiffTransform;Lio/github/lucf15/tiffrenderer/TiffRenderMode;Lkotlin/jvm/functions/Function0;)V
+	public static synthetic fun render$default (Lio/github/lucf15/tiffrenderer/TiffPage;Lio/github/lucf15/tiffrenderer/TiffBitmap;Lio/github/lucf15/tiffrenderer/TiffRect;Lio/github/lucf15/tiffrenderer/TiffTransform;Lio/github/lucf15/tiffrenderer/TiffRenderMode;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)V
+	public final fun retainRaster (Lkotlin/jvm/functions/Function0;)V
+	public static synthetic fun retainRaster$default (Lio/github/lucf15/tiffrenderer/TiffPage;Lkotlin/jvm/functions/Function0;ILjava/lang/Object;)V
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffRect {
+	public fun <init> (IIII)V
+	public final fun getBottom ()I
+	public final fun getHeight ()I
+	public final fun getLeft ()I
+	public final fun getRight ()I
+	public final fun getTop ()I
+	public final fun getWidth ()I
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffRenderMode : java/lang/Enum {
+	public static final field FOR_DISPLAY Lio/github/lucf15/tiffrenderer/TiffRenderMode;
+	public static final field FOR_PRINT Lio/github/lucf15/tiffrenderer/TiffRenderMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffRenderMode;
+	public static fun values ()[Lio/github/lucf15/tiffrenderer/TiffRenderMode;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffRenderer : java/lang/AutoCloseable {
+	public fun <init> (Lio/github/lucf15/tiffrenderer/TiffSource;)V
+	public fun close ()V
+	public final fun getPageCount ()I
+	public final fun openPage (I)Lio/github/lucf15/tiffrenderer/TiffPage;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffSource {
+	public static final field Companion Lio/github/lucf15/tiffrenderer/TiffSource$Companion;
+	public synthetic fun <init> (Ljava/lang/String;[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffSource$Companion {
+	public final fun fromByteArray ([B)Lio/github/lucf15/tiffrenderer/TiffSource;
+	public final fun fromFile (Ljava/io/File;)Lio/github/lucf15/tiffrenderer/TiffSource;
+	public final fun fromPath (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffSource;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffTransform {
+	public fun <init> ([F)V
+	public final fun getValues ()[F
+}
+

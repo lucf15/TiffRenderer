@@ -37,6 +37,21 @@ class TiffRendererAndroidNativeOverloadTest {
     }
 
     @Test
+    fun render_bitmapRecycledAfterWrapping_throwsIllegalArgumentException() {
+        openSinglePage().use { renderer ->
+            val page = renderer.openPage(0)
+            val bitmap = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
+            val tiffBitmap = TiffBitmap(bitmap)
+            bitmap.recycle()
+            try {
+                assertThrows(IllegalArgumentException::class.java) { page.render(tiffBitmap) }
+            } finally {
+                page.close()
+            }
+        }
+    }
+
+    @Test
     fun tiffBitmap_immutableBitmap_throwsIllegalArgumentException() {
         val colors = IntArray(PAGE_WIDTH * PAGE_HEIGHT)
         val bitmap = Bitmap.createBitmap(colors, PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)

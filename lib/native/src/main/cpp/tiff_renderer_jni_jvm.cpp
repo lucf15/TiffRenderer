@@ -166,25 +166,25 @@ void nativeOpenPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageI
     env->SetIntArrayRegion(outSize, 0, 2, size);
 }
 
-void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
+jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
         jobject destination, jint dstWidth, jint dstHeight, jint clipLeft, jint clipTop,
         jint clipRight, jint clipBottom, jfloatArray matrixValues, jint renderMode) {
     if (!requireDocument(env, documentPtr)) {
-        return;
+        return JNI_FALSE;
     }
     if (destination == nullptr) {
         throwException(env, "java/lang/IllegalArgumentException", "destination cannot be null");
-        return;
+        return JNI_FALSE;
     }
     if (matrixValues == nullptr || env->GetArrayLength(matrixValues) < 6) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "matrixValues must have 6 elements");
-        return;
+        return JNI_FALSE;
     }
     if (dstWidth <= 0 || dstHeight <= 0) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "dstWidth/dstHeight must be positive");
-        return;
+        return JNI_FALSE;
     }
 
     // destination is a direct java.nio.ByteBuffer (TiffBitmap.jvm's own off-heap storage): the
@@ -194,7 +194,7 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
     if (bufferAddress == nullptr) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "destination must be a direct ByteBuffer");
-        return;
+        return JNI_FALSE;
     }
     const jlong bufferCapacity = env->GetDirectBufferCapacity(destination);
     const int64_t requiredBytes =
@@ -202,7 +202,7 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
     if (bufferCapacity < 0 || bufferCapacity < requiredBytes) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "destination smaller than dstWidth * dstHeight * 4 bytes");
-        return;
+        return JNI_FALSE;
     }
 
     jfloat matrix[6];
@@ -214,21 +214,28 @@ void nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pag
             clipTop, clipRight, clipBottom, matrix, static_cast<TiffCoreRenderMode>(renderMode),
             errBuf, sizeof(errBuf));
 
-    if (status != TIFFCORE_OK) {
+    // TIFFCORE_OK_PARTIAL means libtiff tolerated a decode error in part of the page (e.g. one bad
+    // strip) and returned the rest of the raster anyway; treated as success, reported to the
+    // caller via the return value instead of an exception.
+    if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
         throwForStatus(env, status, errBuf, "failed to render TIFF page");
+        return JNI_FALSE;
     }
+    return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
 }
 
-void nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex) {
+jboolean nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex) {
     if (!requireDocument(env, documentPtr)) {
-        return;
+        return JNI_FALSE;
     }
     char errBuf[kErrBufSize] = {};
     const TiffCoreStatus status = tiffcore_retain_raster(asDocument(documentPtr), pageIndex,
             errBuf, sizeof(errBuf));
-    if (status != TIFFCORE_OK) {
+    if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
         throwForStatus(env, status, errBuf, "failed to decode TIFF page");
+        return JNI_FALSE;
     }
+    return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
 }
 
 void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
@@ -238,17 +245,24 @@ void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
     tiffcore_release_raster(asDocument(documentPtr));
 }
 
+// JNINativeMethod's name/signature fields are plain char* per the JNI spec (not const char*), so
+// every string literal below needs an explicit const_cast rather than an implicit (and, under
+// -Werror, rejected) literal-to-char* conversion.
+#define JNI_STR(s) const_cast<char*>(s)
+
 const JNINativeMethod gMethods[] = {
-        {"nativeOpen", "(Ljava/lang/String;)J", reinterpret_cast<void*>(nativeOpen)},
-        {"nativeOpenBytes", "([B)J", reinterpret_cast<void*>(nativeOpenBytes)},
-        {"nativeClose", "(J)V", reinterpret_cast<void*>(nativeClose)},
-        {"nativeGetPageCount", "(J)I", reinterpret_cast<void*>(nativeGetPageCount)},
-        {"nativeOpenPage", "(JI[I)V", reinterpret_cast<void*>(nativeOpenPage)},
-        {"nativeRenderPage", "(JILjava/nio/ByteBuffer;IIIIII[FI)V",
+        {JNI_STR("nativeOpen"), JNI_STR("(Ljava/lang/String;)J"), reinterpret_cast<void*>(nativeOpen)},
+        {JNI_STR("nativeOpenBytes"), JNI_STR("([B)J"), reinterpret_cast<void*>(nativeOpenBytes)},
+        {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeClose)},
+        {JNI_STR("nativeGetPageCount"), JNI_STR("(J)I"), reinterpret_cast<void*>(nativeGetPageCount)},
+        {JNI_STR("nativeOpenPage"), JNI_STR("(JI[I)V"), reinterpret_cast<void*>(nativeOpenPage)},
+        {JNI_STR("nativeRenderPage"), JNI_STR("(JILjava/nio/ByteBuffer;IIIIII[FI)Z"),
                 reinterpret_cast<void*>(nativeRenderPage)},
-        {"nativeRetainRaster", "(JI)V", reinterpret_cast<void*>(nativeRetainRaster)},
-        {"nativeReleaseRaster", "(J)V", reinterpret_cast<void*>(nativeReleaseRaster)},
+        {JNI_STR("nativeRetainRaster"), JNI_STR("(JI)Z"), reinterpret_cast<void*>(nativeRetainRaster)},
+        {JNI_STR("nativeReleaseRaster"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeReleaseRaster)},
 };
+
+#undef JNI_STR
 
 }  // namespace
 

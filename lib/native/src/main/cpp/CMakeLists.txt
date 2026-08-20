@@ -5,9 +5,36 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+option(TIFFRENDERER_WERROR "Fail the build on any -Wall/-Wextra warning in this project's own targets (not vendored third_party code)" OFF)
+option(TIFFRENDERER_FUZZ "Build the tiff_fuzz libFuzzer harness, ASan/UBSan-instrumented (Clang only)" OFF)
+
+if(TIFFRENDERER_FUZZ)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "TIFFRENDERER_FUZZ requires Clang (libFuzzer/-fsanitize=fuzzer)")
+    endif()
+    # fuzzer-no-link instruments every target below (including vendored libtiff/libjpeg/libwebp)
+    # with libFuzzer's coverage counters without providing a main(), since that would collide
+    # across this many static libraries. Only tiff_fuzz itself links plain -fsanitize=fuzzer,
+    # which provides the actual entry point, further down this file.
+    add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=undefined -g -O1)
+    add_link_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined)
+endif()
+
 if(NOT MSVC)
-    add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden -fstack-protector-strong)
-    add_compile_definitions($<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>)
+    # The NDK and modern glibc toolchains (glibc >= 2.35 defaults to 3) may already define
+    # _FORTIFY_SOURCE, so -U first avoids a -Wmacro-redefined warning; level 3 needs GCC >= 12 or
+    # Clang >= 15, older toolchains only support 2. Both go in one add_compile_options call: CMake
+    # doesn't guarantee ordering between separate add_compile_definitions/add_compile_options calls.
+    set(TIFFRENDERER_FORTIFY_LEVEL 2)
+    if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
+            OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15))
+        set(TIFFRENDERER_FORTIFY_LEVEL 3)
+    endif()
+    add_compile_options(
+        -fvisibility=hidden -fvisibility-inlines-hidden -fstack-protector-strong
+        $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE>
+        $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=${TIFFRENDERER_FORTIFY_LEVEL}>
+    )
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID)
@@ -128,7 +155,7 @@ add_library(tiffrenderer_core STATIC
 target_link_libraries(tiffrenderer_core PUBLIC tiff)
 target_include_directories(tiffrenderer_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(NOT MSVC)
-    target_compile_options(tiffrenderer_core PRIVATE -Wall -Wextra)
+    target_compile_options(tiffrenderer_core PRIVATE -Wall -Wextra $<$<BOOL:${TIFFRENDERER_WERROR}>:-Werror>)
 endif()
 
 # --- JNI wrapper (Android only) -----------------------------------------------
@@ -150,7 +177,7 @@ if(ANDROID)
             ${jnigraphics-lib}
     )
 
-    target_compile_options(tiffrenderer_jni PRIVATE -Wall -Wextra)
+    target_compile_options(tiffrenderer_jni PRIVATE -Wall -Wextra $<$<BOOL:${TIFFRENDERER_WERROR}>:-Werror>)
     target_link_options(tiffrenderer_jni PRIVATE
         "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.map"
         "-Wl,-z,relro" "-Wl,-z,now"
@@ -168,7 +195,7 @@ if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_include_directories(tiffrenderer_jni_jvm PRIVATE ${JNI_INCLUDE_DIRS})
     target_link_libraries(tiffrenderer_jni_jvm PRIVATE tiffrenderer_core)
     if(NOT MSVC)
-        target_compile_options(tiffrenderer_jni_jvm PRIVATE -Wall -Wextra)
+        target_compile_options(tiffrenderer_jni_jvm PRIVATE -Wall -Wextra $<$<BOOL:${TIFFRENDERER_WERROR}>:-Werror>)
     endif()
     if(APPLE)
         target_link_options(tiffrenderer_jni_jvm PRIVATE "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.macos.txt")
@@ -178,4 +205,11 @@ if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             "-Wl,-z,relro" "-Wl,-z,now"
         )
     endif()
+endif()
+
+# --- libFuzzer harness (no JNI, no Android/iOS deps; Clang only) --------------------------------
+if(TIFFRENDERER_FUZZ)
+    add_executable(tiff_fuzz fuzz/tiff_fuzz.cpp)
+    target_link_libraries(tiff_fuzz PRIVATE tiffrenderer_core)
+    target_link_options(tiff_fuzz PRIVATE -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined)
 endif()

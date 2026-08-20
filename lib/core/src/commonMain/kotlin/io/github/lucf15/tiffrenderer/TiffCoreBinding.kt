@@ -16,6 +16,7 @@ internal expect object TiffCoreBinding {
 
     fun openPage(handle: TiffCoreHandle, index: Int): TiffCorePageSize
 
+    /** Returns `true` if libtiff tolerated a partial decode error somewhere in the page. */
     fun render(
         handle: TiffCoreHandle,
         index: Int,
@@ -23,9 +24,10 @@ internal expect object TiffCoreBinding {
         clip: TiffRect,
         transform: TiffTransform,
         mode: TiffRenderMode,
-    )
+    ): Boolean
 
-    fun retainRaster(handle: TiffCoreHandle, index: Int)
+    /** Returns `true` if libtiff tolerated a partial decode error somewhere in the page. */
+    fun retainRaster(handle: TiffCoreHandle, index: Int): Boolean
 
     fun releaseRaster(handle: TiffCoreHandle)
 }

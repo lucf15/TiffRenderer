@@ -1,9 +1,9 @@
-[submodule "lib/src/main/cpp/third_party/libtiff"]
+[submodule "lib/native/src/main/cpp/third_party/libtiff"]
 	path = lib/native/src/main/cpp/third_party/libtiff
 	url = https://gitlab.com/libtiff/libtiff.git
-[submodule "lib/src/main/cpp/third_party/libjpeg"]
+[submodule "lib/native/src/main/cpp/third_party/libjpeg"]
 	path = lib/native/src/main/cpp/third_party/libjpeg
 	url = https://github.com/libjpeg-turbo/ijg.git
-[submodule "lib/src/main/cpp/third_party/libwebp"]
+[submodule "lib/native/src/main/cpp/third_party/libwebp"]
 	path = lib/native/src/main/cpp/third_party/libwebp
 	url = https://github.com/webmproject/libwebp.git

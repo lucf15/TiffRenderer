@@ -25,6 +25,7 @@ internal object TiffRendererNative {
     @Throws(IOException::class)
     external fun nativeOpenPage(documentPtr: Long, pageIndex: Int, outSize: IntArray)
 
+    /** Returns `true` if libtiff tolerated a partial decode error somewhere in the page. */
     @JvmStatic
     @Throws(IOException::class)
     external fun nativeRenderPage(
@@ -37,11 +38,12 @@ internal object TiffRendererNative {
         clipBottom: Int,
         matrixValues: FloatArray,
         renderMode: Int,
-    )
+    ): Boolean
 
+    /** Returns `true` if libtiff tolerated a partial decode error somewhere in the page. */
     @JvmStatic
     @Throws(IOException::class)
-    external fun nativeRetainRaster(documentPtr: Long, pageIndex: Int)
+    external fun nativeRetainRaster(documentPtr: Long, pageIndex: Int): Boolean
 
     @JvmStatic
     external fun nativeReleaseRaster(documentPtr: Long)
