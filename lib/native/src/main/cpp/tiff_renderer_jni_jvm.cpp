@@ -21,11 +21,8 @@
 #include "jni_shared.h"
 #include "tiff_core.h"
 
-// asDocument/throwException/requireDocument/throwForStatus, and every native method whose
-// signature doesn't depend on the destination-pixel type (nativeClose/nativeGetPageCount/
-// nativeOpenPage/nativeRetainRaster/nativeReleaseRaster), live in jni_shared.cpp instead, shared
-// verbatim with tiff_renderer_jni.cpp: only nativeOpen/nativeOpenBytes and nativeRenderPage
-// genuinely differ per platform.
+// Scaffolding shared with the Android JNI shim lives in jni_shared.h/.cpp instead; only
+// nativeOpen/nativeOpenBytes and nativeRenderPage genuinely differ per platform.
 
 namespace tiffrenderer {
 

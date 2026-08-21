@@ -24,11 +24,9 @@
 
 // Thin JNI shim: arg marshaling, AndroidBitmap pixel access, and translating TiffCoreStatus into
 // Java exceptions. All libtiff-facing logic lives in tiff_core.cpp/.h, which has no JNI or
-// Android dependency, so it's also bound directly from the iOS cinterop layer. asDocument/
-// throwException/requireDocument/throwForStatus, and every native method whose signature doesn't
-// depend on the destination-pixel type (nativeClose/nativeGetPageCount/nativeOpenPage/
-// nativeRetainRaster/nativeReleaseRaster), live in jni_shared.cpp instead, shared verbatim with
-// tiff_renderer_jni_jvm.cpp: only nativeOpen and nativeRenderPage genuinely differ per platform.
+// Android dependency, so it's also bound directly from the iOS cinterop layer. Scaffolding shared
+// with the JVM desktop shim lives in jni_shared.h/.cpp instead; only nativeOpen and
+// nativeRenderPage genuinely differ per platform.
 
 namespace tiffrenderer {
 

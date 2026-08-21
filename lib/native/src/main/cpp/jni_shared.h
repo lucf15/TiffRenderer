@@ -21,11 +21,8 @@
 
 #include "tiff_core.h"
 
-// JNI scaffolding shared between the Android (tiff_renderer_jni.cpp) and desktop JVM
-// (tiff_renderer_jni_jvm.cpp) shims: documentPtr/pageIndex are always jlong/jint regardless of
-// platform, so these are identical on both. Only nativeOpen*/nativeRenderPage differ per platform
-// (fd vs. path/bytes; android.graphics.Bitmap vs. java.nio.ByteBuffer), so those stay in each
-// shim's own file and are registered alongside these in each file's own gMethods table.
+// JNI scaffolding shared between the Android and desktop JVM shims: documentPtr/pageIndex are
+// always jlong/jint regardless of platform, so these are identical on both.
 
 namespace tiffrenderer {
 

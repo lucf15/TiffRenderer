@@ -2,10 +2,9 @@ package io.github.lucf15.tiffrenderer
 
 import java.io.IOException
 
-/** [lock] serializes native calls per document (a TIFF*'s directory cursor isn't thread-safe).
+/** [lock] serializes native calls per document (a TIFF*'s directory cursor isn't thread-safe);
  * [ptr] zeroes under the same lock on close, so a blocked call sees a closed handle instead of a
- * freed pointer. Shared between Android and JVM desktop: both are real JVMs, so `synchronized()`
- * is available to both (iOS's own actual uses `NSLock` instead). */
+ * freed pointer. Shared by Android/JVM (iOS's own actual uses `NSLock` instead). */
 internal actual class TiffCoreHandle internal constructor(private var ptr: Long) {
     private val lock: Any = Any()
 

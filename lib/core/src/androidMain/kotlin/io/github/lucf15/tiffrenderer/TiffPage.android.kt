@@ -18,9 +18,7 @@ public fun Matrix.toTiffTransform(): TiffTransform {
     return TiffTransform(floatArrayOf(values[0], values[1], values[2], values[3], values[4], values[5]))
 }
 
-/** Android-native overload of [TiffPage.render], taking the platform [Bitmap]/[Rect]/[Matrix]
- * types directly instead of [TiffBitmap]/[TiffRect]/[TiffTransform]; mirrors
- * `PdfRenderer.Page#render`'s own signature shape. */
+/** Overload of [TiffPage.render] taking platform [Bitmap]/[Rect]/[Matrix] types directly. */
 public fun TiffPage.render(
     destination: Bitmap,
     destClip: Rect? = null,

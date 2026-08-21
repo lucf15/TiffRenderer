@@ -1,9 +1,8 @@
 package io.github.lucf15.tiffrenderer
 
-/** A seekable input to open with [TiffRenderer]. Opaque in commonMain since what backs it (a fd on
- * Android/iOS, a file path on JVM) is platform-specific; platform constructors live in each
- * `actual`'s own companion. Single-use: reusing an already-consumed instance throws
- * [IllegalStateException]. */
+/** A seekable input to open with [TiffRenderer]; opaque here since its backing (a fd on
+ * Android/iOS, a file path on JVM) is platform-specific. Single-use: reusing an already-consumed
+ * instance throws [IllegalStateException]. */
 public expect class TiffSource {
     /** Called by [TiffRenderer] on construction, rejecting a second [TiffRenderer] over the same
      * source instead of reusing a possibly-already-closed fd. Compare-and-set: `true` only for
