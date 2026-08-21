@@ -29,6 +29,10 @@ jobs:
     needs: validate-wrapper
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       TIFFRENDERER_WERROR: "true"
     steps:
@@ -39,7 +43,7 @@ jobs:
       - uses: ./.github/actions/setup-android-toolchain
 
       - name: Build library (all ABIs)
-        run: ./gradlew :lib:core:bundleAndroidMainAar
+        run: ./gradlew :lib:core:bundleAndroidMainAar :lib:native:bundleReleaseAar
 
       - name: Build sample app
         run: ./gradlew :sample:androidApp:assembleDebug
@@ -55,6 +59,28 @@ jobs:
           name: lib-debug-aar
           path: lib/core/build/outputs/aar/core.aar
           if-no-files-found: error
+
+      - name: Extract this job's own compiled .so files for reuse in publish-central
+        run: |
+          mkdir -p /tmp/android-native-libs
+          cd /tmp/android-native-libs
+          unzip -q "${{ github.workspace }}/lib/native/build/outputs/aar/native-release.aar" 'jni/*'
+          mv jni/* .
+          rmdir jni
+          find . -type f ! -name SHA256SUMS -exec shasum -a 256 {} + > SHA256SUMS
+
+      - name: Attest build provenance for the Android native libs this job built
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: /tmp/android-native-libs/*/*.so
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-native-libs
+          path: /tmp/android-native-libs
+          if-no-files-found: error
+          retention-days: 1
 
       - uses: ./.github/actions/run-android-instrumented-tests
 
@@ -144,6 +170,10 @@ jobs:
     needs: validate-wrapper
     runs-on: macos-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       TIFFRENDERER_WERROR: "true"
     steps:
@@ -154,6 +184,27 @@ jobs:
       - uses: ./.github/actions/setup-android-toolchain
 
       - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test :lib:core:klibApiCheck
+
+      - name: Checksum the iOS native libs this job just built and tested
+        shell: bash
+        run: |
+          cd lib/native/build/ios
+          for dir in */; do
+            (cd "$dir" && find . -type f ! -name SHA256SUMS -exec shasum -a 256 {} + > SHA256SUMS)
+          done
+
+      - name: Attest build provenance for the iOS native libs this job built
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: lib/native/build/ios/*/*.a
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ios-native-libs
+          path: lib/native/build/ios/
+          if-no-files-found: error
+          retention-days: 1
 
   semantic-release:
     needs: [build-android, build-jvm, build-ios]
@@ -197,7 +248,7 @@ jobs:
           gh release upload "v${{ steps.release.outputs.new_release_version }}" release-assets/*.apk --repo ${{ github.repository }}
 
   publish-central:
-    needs: [semantic-release, build-jvm]
+    needs: [semantic-release, build-android, build-jvm, build-ios]
     if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
@@ -221,7 +272,7 @@ jobs:
           path: lib/native/build/jvm/natives
           merge-multiple: true
 
-      - name: Verify downloaded natives are internally consistent (not corrupted in transit)
+      - name: Verify downloaded JVM natives are internally consistent (not corrupted in transit)
         run: |
           cd lib/native/build/jvm/natives
           for name in linux-x86_64 linux-aarch64 windows-x86_64 windows-aarch64 macos-x86_64 macos-aarch64; do
@@ -231,7 +282,7 @@ jobs:
             (cd "$dir" && shasum -a 256 -c SHA256SUMS --strict)
           done
 
-      - name: Verify downloaded natives match build-jvm's attested provenance
+      - name: Verify downloaded JVM natives match build-jvm's attested provenance
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -248,11 +299,79 @@ jobs:
             exit 1
           fi
 
+      - name: Download iOS native libs built by build-ios
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ios-native-libs
+          path: lib/native/build/ios
+
+      - name: Verify downloaded iOS native libs are internally consistent (not corrupted in transit)
+        run: |
+          cd lib/native/build/ios
+          for name in iosArm64 iosSimulatorArm64; do
+            [ -d "$name" ] || { echo "missing natives for $name" >&2; exit 1; }
+          done
+          for dir in */; do
+            (cd "$dir" && shasum -a 256 -c SHA256SUMS --strict)
+          done
+
+      - name: Verify downloaded iOS native libs match build-ios's attested provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd lib/native/build/ios
+          verified=0
+          for f in */*.a; do
+            [ -f "$f" ] || continue
+            gh attestation verify "$f" --repo "${{ github.repository }}" \
+                --signer-workflow "${{ github.repository }}/.github/workflows/ci.yml"
+            verified=$((verified + 1))
+          done
+          # libtiffrenderer_core.a + libtiff.a + libijg_jpeg.a + libwebp.a + libsharpyuv.a, per target
+          if [ "$verified" -ne 10 ]; then
+            echo "expected to verify 10 iOS native libs (5 per target x 2 targets), verified $verified" >&2
+            exit 1
+          fi
+
+      - name: Download Android native libs built by build-android
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-native-libs
+          path: /tmp/android-native-libs
+
+      - name: Verify downloaded Android native libs are internally consistent (not corrupted in transit)
+        run: |
+          cd /tmp/android-native-libs
+          for name in arm64-v8a armeabi-v7a x86 x86_64; do
+            [ -d "$name" ] || { echo "missing natives for $name" >&2; exit 1; }
+          done
+          shasum -a 256 -c SHA256SUMS --strict
+
+      - name: Verify downloaded Android native libs match build-android's attested provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd /tmp/android-native-libs
+          verified=0
+          for f in */*.so; do
+            [ -f "$f" ] || continue
+            gh attestation verify "$f" --repo "${{ github.repository }}" \
+                --signer-workflow "${{ github.repository }}/.github/workflows/ci.yml"
+            verified=$((verified + 1))
+          done
+          if [ "$verified" -ne 4 ]; then
+            echo "expected to verify 4 Android native libs (one per ABI), verified $verified" >&2
+            exit 1
+          fi
+
       - name: Publish to Maven Central
         id: publish
         env:
           VERSION: ${{ needs.semantic-release.outputs.new_release_version }}
           TIFFRENDERER_SKIP_JVM_NATIVE_BUILD: "true"
+          TIFFRENDERER_SKIP_IOS_NATIVE_BUILD: "true"
+          TIFFRENDERER_SKIP_ANDROID_NATIVE_BUILD: "true"
+          TIFFRENDERER_PREBUILT_JNI_LIBS_DIR: /tmp/android-native-libs
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
