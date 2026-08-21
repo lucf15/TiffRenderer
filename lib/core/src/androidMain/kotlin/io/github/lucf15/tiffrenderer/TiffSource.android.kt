@@ -17,7 +17,7 @@ public actual class TiffSource private constructor(
 
     internal actual fun markConsumed(): Boolean = consumedFlag.compareAndSet(false, true)
 
-    internal actual fun release() {
+    public actual fun release() {
         if (!releasedFlag.compareAndSet(false, true)) return
         try {
             pfd.close()
@@ -26,8 +26,10 @@ public actual class TiffSource private constructor(
     }
 
     public companion object {
-        public fun fromFileDescriptor(fd: Int, size: Long): TiffSource =
-            TiffSource(ParcelFileDescriptor.adoptFd(fd), size)
+        public fun fromFileDescriptor(fd: Int, size: Long): TiffSource {
+            require(size >= 0) { "size cannot be negative, was $size" }
+            return TiffSource(ParcelFileDescriptor.adoptFd(fd), size)
+        }
 
         /** Android-only convenience: wraps an existing [ParcelFileDescriptor] (e.g. from a
          * `ContentResolver`), stat'd for its size. Takes ownership: the owning [TiffRenderer]'s

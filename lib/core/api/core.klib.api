@@ -71,6 +71,8 @@ final class io.github.lucf15.tiffrenderer/TiffRenderer : kotlin/AutoCloseable { 
 }
 
 final class io.github.lucf15.tiffrenderer/TiffSource { // io.github.lucf15.tiffrenderer/TiffSource|null[0]
+    final fun release() // io.github.lucf15.tiffrenderer/TiffSource.release|release(){}[0]
+
     final object Companion { // io.github.lucf15.tiffrenderer/TiffSource.Companion|null[0]
         final fun fromFileDescriptor(kotlin/Int, kotlin/Long): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromFileDescriptor|fromFileDescriptor(kotlin.Int;kotlin.Long){}[0]
     }

@@ -2,10 +2,7 @@ package io.github.lucf15.tiffrenderer
 
 public actual class TiffBitmap(public actual val width: Int, public actual val height: Int) {
     init {
-        require(width > 0 && height > 0) { "width/height must be positive, got ${width}x$height" }
-        require(width.toLong() * height.toLong() * 4 <= Int.MAX_VALUE) {
-            "width * height overflows Int, got ${width}x$height"
-        }
+        requirePositiveNonOverflowingBitmapDimensions(width, height)
     }
 
     // Packed RGBA8888, row-major, stride == width pixels: exactly what tiff_core's render_page

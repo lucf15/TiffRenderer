@@ -14,7 +14,7 @@ public actual class TiffBitmap private constructor(
 ) {
     public companion object {
         public operator fun invoke(width: Int, height: Int): TiffBitmap {
-            requirePositiveNonOverflowingDimensions(width, height)
+            requirePositiveNonOverflowingBitmapDimensions(width, height)
             return TiffBitmap(width, height, ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder()))
         }
 
@@ -24,8 +24,9 @@ public actual class TiffBitmap private constructor(
          * Takes [buffer] from its current position: pass a slice or a positioned view to render
          * into a sub-region of a larger arena. */
         public fun wrapping(buffer: ByteBuffer, width: Int, height: Int): TiffBitmap {
-            requirePositiveNonOverflowingDimensions(width, height)
+            requirePositiveNonOverflowingBitmapDimensions(width, height)
             require(buffer.isDirect) { "TiffBitmap.wrapping requires a direct ByteBuffer" }
+            require(!buffer.isReadOnly) { "TiffBitmap.wrapping requires a writable ByteBuffer" }
             require(buffer.remaining() >= width * height * 4) {
                 "buffer has ${buffer.remaining()} bytes remaining, too small for ${width}x$height"
             }
@@ -33,13 +34,6 @@ public actual class TiffBitmap private constructor(
             // position, so a caller passing an offset view of a larger arena would silently
             // render at the arena's start instead of at that offset.
             return TiffBitmap(width, height, buffer.slice().order(ByteOrder.nativeOrder()))
-        }
-
-        private fun requirePositiveNonOverflowingDimensions(width: Int, height: Int) {
-            require(width > 0 && height > 0) { "width/height must be positive, got ${width}x$height" }
-            require(width.toLong() * height.toLong() * 4 <= Int.MAX_VALUE) {
-                "width * height overflows Int, got ${width}x$height"
-            }
         }
     }
 }

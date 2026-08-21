@@ -23,6 +23,10 @@ on:
         description: 'Exact markdown link text README.md uses for this library in its version table, e.g. "libtiff" or "IJG libjpeg"'
         required: true
         type: string
+    secrets:
+      token:
+        description: "GITHUB_TOKEN to open/merge the bump PR. Pass only this, never secrets: inherit."
+        required: true
 
 jobs:
   check:
@@ -72,55 +76,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Check out candidate version
-        env:
-          NEW_SHA: ${{ needs.check.outputs.new_sha }}
-        run: |
-          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
-          git fetch --tags --quiet
-          git checkout "$NEW_SHA"
+      - uses: ./.github/actions/checkout-candidate-submodule
+        with:
+          library_name: ${{ inputs.library_name }}
+          new_sha: ${{ needs.check.outputs.new_sha }}
 
       - uses: ./.github/actions/setup-android-toolchain
 
       - name: Build library (all ABIs)
         run: ./gradlew :lib:core:bundleAndroidMainAar
 
-      - name: Enable KVM for the emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: AVD cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-34-google_apis-x86_64
-
-      - name: Create AVD snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: echo "Generated AVD snapshot for caching."
-
-      - name: Run instrumented test suite
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: ./gradlew :lib:core:connectedAndroidDeviceTest
+      - uses: ./.github/actions/run-android-instrumented-tests
 
   verify-jvm:
     needs: check
@@ -156,29 +122,16 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Check out candidate version
-        shell: bash
-        env:
-          NEW_SHA: ${{ needs.check.outputs.new_sha }}
-        run: |
-          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
-          git fetch --tags --quiet
-          git checkout "$NEW_SHA"
-
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: ./.github/actions/checkout-candidate-submodule
         with:
-          distribution: ${{ matrix.java-distribution }}
-          java-version: "17"
-          architecture: ${{ matrix.java-arch }}
+          library_name: ${{ inputs.library_name }}
+          new_sha: ${{ needs.check.outputs.new_sha }}
 
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-        if: contains(fromJSON('["ubuntu-24.04-arm", "windows-11-arm"]'), matrix.os)
+      - uses: ./.github/actions/setup-jvm-and-test
         with:
-          packages: ""
-
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-
-      - run: ./gradlew :lib:core:jvmTest :sample:desktopApp:jar
+          os: ${{ matrix.os }}
+          java-distribution: ${{ matrix.java-distribution }}
+          java-arch: ${{ matrix.java-arch }}
 
   verify-ios:
     needs: check
@@ -192,20 +145,14 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Check out candidate version
-        env:
-          NEW_SHA: ${{ needs.check.outputs.new_sha }}
-        run: |
-          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
-          git fetch --tags --quiet
-          git checkout "$NEW_SHA"
+      - uses: ./.github/actions/checkout-candidate-submodule
+        with:
+          library_name: ${{ inputs.library_name }}
+          new_sha: ${{ needs.check.outputs.new_sha }}
 
       - uses: ./.github/actions/setup-android-toolchain
 
-      - name: Install a CMake newer than the NDK-pinned 3.22.1 for the iOS Xcode-generator build
-        run: |
-          brew install cmake
-          echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-ios-cmake
 
       - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test
 
@@ -217,21 +164,20 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     outputs:
       pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
+      branch: bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           submodules: recursive
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.token }}
 
-      - name: Check out candidate version
-        env:
-          NEW_SHA: ${{ needs.check.outputs.new_sha }}
-        run: |
-          cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
-          git fetch --tags --quiet
-          git checkout "$NEW_SHA"
+      - uses: ./.github/actions/checkout-candidate-submodule
+        with:
+          library_name: ${{ inputs.library_name }}
+          new_sha: ${{ needs.check.outputs.new_sha }}
 
       - name: Update README version reference
         env:
@@ -262,14 +208,54 @@ jobs:
             Build (all 4 Android ABIs, all 6 JVM desktop OS/arch combos, iOS) and the full
             instrumented suite (codec support matrix + corrupt-input crash tests) already ran
             against this exact change before this PR was opened.
-            ${{ (needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success') && 'They passed, so this auto-merges.' || '**They FAILED**: this needs manual investigation before merging.' }}
+            ${{ (needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success') && 'They passed. This PR is opened with the repos own GITHUB_TOKEN, so ci.ymls normal pull_request trigger never fires on it; a real ci.yml run against this branch is now being dispatched to satisfy mains required status checks, and this auto-merges once that run is green.' || '**They FAILED**: this needs manual investigation before merging.' }}
           branch: bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
           base: main
           labels: dependencies
 
-  merge:
+      - name: Dispatch a real ci.yml run against the bump branch
+        if: needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+        run: |
+          gh workflow run ci.yml --repo ${{ github.repository }} \
+              --ref bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
+
+  wait-for-required-checks:
     needs: [check, verify-android, verify-jvm, verify-ios, pr]
-    if: needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success'
+    if: >-
+      needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success'
+      && needs.verify-ios.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+    steps:
+      - name: Find and wait for the dispatched ci.yml run
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+          BRANCH: ${{ needs.pr.outputs.branch }}
+        run: |
+          run_id=""
+          for _ in $(seq 1 30); do
+            run_id=$(gh run list --repo "${{ github.repository }}" --workflow ci.yml \
+                --branch "$BRANCH" --event workflow_dispatch --limit 1 \
+                --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
+            [ -n "$run_id" ] && break
+            sleep 10
+          done
+          if [ -z "$run_id" ]; then
+            echo "dispatched ci.yml run never appeared for branch $BRANCH" >&2
+            exit 1
+          fi
+          echo "watching ci.yml run $run_id on branch $BRANCH"
+          gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status
+
+  merge:
+    needs: [check, verify-android, verify-jvm, verify-ios, pr, wait-for-required-checks]
+    if: >-
+      needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success'
+      && needs.verify-ios.result == 'success' && needs.wait-for-required-checks.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -278,6 +264,6 @@ jobs:
     steps:
       - name: Auto-merge PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.token }}
           REPO: ${{ github.repository }}
         run: gh pr merge "${{ needs.pr.outputs.pull-request-number }}" --repo "$REPO" --squash --delete-branch

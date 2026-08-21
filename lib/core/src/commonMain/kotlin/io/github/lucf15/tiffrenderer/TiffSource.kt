@@ -10,7 +10,8 @@ public expect class TiffSource {
      * the caller that wins a race with another [TiffRenderer] over the same source. */
     internal fun markConsumed(): Boolean
 
-    /** Releases the platform resource this source owns, if any. Called once by
-     * [TiffRenderer]'s close path. */
-    internal fun release()
+    /** Releases the platform resource this source owns, if any. Idempotent, and safe to call
+     * directly if this instance is never handed to a [TiffRenderer] (e.g. a fd-backed source
+     * constructed but then discarded) — otherwise called once by [TiffRenderer]'s close path. */
+    public fun release()
 }

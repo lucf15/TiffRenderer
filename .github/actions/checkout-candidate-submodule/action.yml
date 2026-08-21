@@ -1,0 +1,22 @@
+name: Check out candidate submodule version
+description: Fetches and checks out a specific commit inside a third_party submodule directory.
+
+inputs:
+  library_name:
+    description: 'Submodule directory name under lib/native/src/main/cpp/third_party/, e.g. "libtiff"'
+    required: true
+  new_sha:
+    description: Commit SHA to check out inside the submodule
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        LIBRARY_NAME: ${{ inputs.library_name }}
+        NEW_SHA: ${{ inputs.new_sha }}
+      run: |
+        cd "lib/native/src/main/cpp/third_party/${LIBRARY_NAME}"
+        git fetch --tags --quiet
+        git checkout "$NEW_SHA"

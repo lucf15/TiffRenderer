@@ -22,4 +22,5 @@ jobs:
       tag_pattern: '^jpeg-[0-9]+[a-z]?$'
       version_prefix: jpeg-
       readme_link_text: IJG libjpeg
-    secrets: inherit
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,7 @@
 package io.github.lucf15.tiffrenderer
 
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertFailsWith
 
 class TiffTransformTest {
@@ -12,6 +13,15 @@ class TiffTransformTest {
     @Test
     fun acceptsSixElements() {
         TiffTransform(floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f))
+    }
+
+    @Test
+    fun valuesIsDefensivelyCopiedBothWays() {
+        val source = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f)
+        val transform = TiffTransform(source)
+        source[0] = 999f
+        transform.values[0] = 999f
+        assertContentEquals(floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f), transform.values)
     }
 }
 

@@ -22,4 +22,5 @@ jobs:
       tag_pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
       version_prefix: v
       readme_link_text: libtiff
-    secrets: inherit
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
