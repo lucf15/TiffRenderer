@@ -8,6 +8,9 @@ plugins {
 
 version = System.getenv("VERSION") ?: "0.1.0-SNAPSHOT"
 
+val skipAndroidNativeBuild = System.getenv("TIFFRENDERER_SKIP_ANDROID_NATIVE_BUILD") == "true"
+val prebuiltJniLibsDir = System.getenv("TIFFRENDERER_PREBUILT_JNI_LIBS_DIR")
+
 android {
     namespace = "io.github.lucf15.tiffrenderer.nativelib"
     compileSdk = libs.versions.androidCompileSdk.get().toInt()
@@ -17,11 +20,13 @@ android {
         minSdk = libs.versions.androidMinSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        externalNativeBuild {
-            cmake {
-                arguments += listOf("-DANDROID_STL=c++_static")
-                if (System.getenv("TIFFRENDERER_WERROR") == "true") {
-                    arguments += "-DTIFFRENDERER_WERROR=ON"
+        if (!skipAndroidNativeBuild) {
+            externalNativeBuild {
+                cmake {
+                    arguments += listOf("-DANDROID_STL=c++_static")
+                    if (System.getenv("TIFFRENDERER_WERROR") == "true") {
+                        arguments += "-DTIFFRENDERER_WERROR=ON"
+                    }
                 }
             }
         }
@@ -33,10 +38,12 @@ android {
         consumerProguardFiles("consumer-rules.pro")
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = libs.versions.cmake.get()
+    if (!skipAndroidNativeBuild) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = libs.versions.cmake.get()
+            }
         }
     }
 
@@ -55,6 +62,17 @@ android {
     buildFeatures {
         buildConfig = false
     }
+
+}
+
+if (skipAndroidNativeBuild) {
+    androidComponents {
+        onVariants { variant ->
+            variant.sources.jniLibs?.addStaticSourceDirectory(requireNotNull(prebuiltJniLibsDir) {
+                "TIFFRENDERER_PREBUILT_JNI_LIBS_DIR must be set when TIFFRENDERER_SKIP_ANDROID_NATIVE_BUILD=true"
+            })
+        }
+    }
 }
 
 dependencies {
@@ -68,6 +86,8 @@ dependencies {
 val buildTiffCoreForIos = tasks.register<Exec>("buildTiffCoreForIos") {
     group = "build"
     description = "Cross-compiles tiffrenderer_core for iosArm64/iosSimulatorArm64 via CMake."
+
+    onlyIf { System.getenv("TIFFRENDERER_SKIP_IOS_NATIVE_BUILD") != "true" }
 
     val cppDir = file("src/main/cpp")
     val outputDir = layout.buildDirectory.dir("ios")
