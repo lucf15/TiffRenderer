@@ -152,8 +152,6 @@ jobs:
 
       - uses: ./.github/actions/setup-android-toolchain
 
-      - uses: ./.github/actions/setup-ios-cmake
-
       - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test
 
   pr:

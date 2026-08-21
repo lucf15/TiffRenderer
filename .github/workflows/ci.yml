@@ -153,8 +153,6 @@ jobs:
 
       - uses: ./.github/actions/setup-android-toolchain
 
-      - uses: ./.github/actions/setup-ios-cmake
-
       - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test :lib:core:klibApiCheck
 
   semantic-release:
@@ -215,8 +213,6 @@ jobs:
           submodules: recursive
 
       - uses: ./.github/actions/setup-android-toolchain
-
-      - uses: ./.github/actions/setup-ios-cmake
 
       - name: Download Linux/Windows JVM natives built by the build-jvm matrix
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

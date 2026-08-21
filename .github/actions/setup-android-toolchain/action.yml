@@ -9,8 +9,8 @@ inputs:
     description: Pinned NDK version (must match lib/native/build.gradle.kts's ndkVersion)
     default: "28.2.13676358"
   cmake-version:
-    description: Pinned CMake version (must match lib/native/build.gradle.kts's externalNativeBuild.cmake.version)
-    default: "3.22.1"
+    description: Pinned CMake version (must match gradle/libs.versions.toml's cmake entry)
+    default: "3.31.6"
 
 runs:
   using: composite
@@ -24,6 +24,8 @@ runs:
 
     - name: Install pinned NDK + CMake
       shell: bash
-      run: sdkmanager --install "ndk;${{ inputs.ndk-version }}" "cmake;${{ inputs.cmake-version }}"
+      run: |
+        sdkmanager --install "ndk;${{ inputs.ndk-version }}" "cmake;${{ inputs.cmake-version }}"
+        echo "TIFFRENDERER_IOS_CMAKE=${ANDROID_SDK_ROOT:-$ANDROID_HOME}/cmake/${{ inputs.cmake-version }}/bin/cmake" >> "$GITHUB_ENV"
 
     - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
