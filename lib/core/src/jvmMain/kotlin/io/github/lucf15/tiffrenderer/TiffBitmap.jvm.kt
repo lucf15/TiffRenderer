@@ -3,10 +3,8 @@ package io.github.lucf15.tiffrenderer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** Backed by a direct (off-heap) [ByteBuffer], not a JVM `IntArray`, so a native render call
- * writes straight into it with no JVM-heap copy. That memory is GC'd, not deterministically
- * freed (see the JVM section of the project README); prefer [wrapping] to reuse one buffer
- * across repeated renders instead of allocating fresh each time. */
+/** Backed by a direct (off-heap) [ByteBuffer], GC'd rather than deterministically freed; prefer
+ * [wrapping] over repeated allocation for a page rendered many times (see the README's JVM section). */
 public actual class TiffBitmap private constructor(
     public actual val width: Int,
     public actual val height: Int,
@@ -14,32 +12,22 @@ public actual class TiffBitmap private constructor(
 ) {
     public companion object {
         public operator fun invoke(width: Int, height: Int): TiffBitmap {
-            requirePositiveNonOverflowingDimensions(width, height)
+            requirePositiveNonOverflowingBitmapDimensions(width, height)
             return TiffBitmap(width, height, ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder()))
         }
 
-        /** Wraps an existing direct [buffer] instead of allocating a new one, so a caller that
-         * renders the same page (or same display size) repeatedly can reuse one off-heap
-         * allocation across calls rather than depending on GC to reclaim each render's buffer.
-         * Takes [buffer] from its current position: pass a slice or a positioned view to render
-         * into a sub-region of a larger arena. */
+        /** Wraps an existing direct [buffer] for reuse instead of allocating fresh; taken from its
+         * current position, so a positioned/sliced view renders into that sub-region. */
         public fun wrapping(buffer: ByteBuffer, width: Int, height: Int): TiffBitmap {
-            requirePositiveNonOverflowingDimensions(width, height)
+            requirePositiveNonOverflowingBitmapDimensions(width, height)
             require(buffer.isDirect) { "TiffBitmap.wrapping requires a direct ByteBuffer" }
+            require(!buffer.isReadOnly) { "TiffBitmap.wrapping requires a writable ByteBuffer" }
             require(buffer.remaining() >= width * height * 4) {
                 "buffer has ${buffer.remaining()} bytes remaining, too small for ${width}x$height"
             }
-            // slice(), not duplicate(): duplicate() keeps the same base address and ignores
-            // position, so a caller passing an offset view of a larger arena would silently
-            // render at the arena's start instead of at that offset.
+            // slice(), not duplicate(): duplicate() ignores position, so an offset view of a
+            // larger arena would silently render at the arena's start instead.
             return TiffBitmap(width, height, buffer.slice().order(ByteOrder.nativeOrder()))
-        }
-
-        private fun requirePositiveNonOverflowingDimensions(width: Int, height: Int) {
-            require(width > 0 && height > 0) { "width/height must be positive, got ${width}x$height" }
-            require(width.toLong() * height.toLong() * 4 <= Int.MAX_VALUE) {
-                "width * height overflows Int, got ${width}x$height"
-            }
         }
     }
 }

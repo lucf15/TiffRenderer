@@ -1,0 +1,95 @@
+name: Sync composite action pins
+
+on:
+  schedule:
+    - cron: "0 6 * * 4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+      branch: sync-composite-action-pins
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Detect and fix drifted/stale pins under .github/actions/
+        id: sync
+        shell: bash
+        run: |
+          workflow_pins_file="$(mktemp)"
+          grep -rhoP 'uses:\s*\K[a-zA-Z0-9_.\-]+(/[a-zA-Z0-9_.\-]+)+@[0-9a-f]{40}\s*#\s*\S+' .github/workflows/*.yml \
+            | sed -E 's/@([0-9a-f]{40})[[:space:]]*#[[:space:]]*/ \1 /' | sort -u > "$workflow_pins_file"
+
+          changed=false
+
+          for action_file in .github/actions/*/action.yml; do
+            while IFS= read -r line; do
+              ref="${line%%@*}"
+              rest="${line#*@}"
+              pinned_sha="${rest%% *}"
+              tag="${rest#*# }"
+
+              new_sha=""
+              new_tag="$tag"
+
+              wf_line="$(awk -v r="$ref" '$1 == r' "$workflow_pins_file")"
+              if [ -n "$wf_line" ]; then
+                wf_sha="$(echo "$wf_line" | awk '{print $2}')"
+                wf_tag="$(echo "$wf_line" | awk '{print $3}')"
+                if [ "$wf_sha" != "$pinned_sha" ]; then
+                  new_sha="$wf_sha"
+                  new_tag="$wf_tag"
+                fi
+              fi
+
+              if [ -z "$new_sha" ]; then
+                repo="$(echo "$ref" | cut -d/ -f1-2)"
+                resolved="$(git ls-remote --tags "https://github.com/${repo}.git" "refs/tags/${tag}^{}" | awk '{print $1}')"
+                if [ -z "$resolved" ]; then
+                  resolved="$(git ls-remote --tags "https://github.com/${repo}.git" "refs/tags/${tag}" | awk '{print $1}')"
+                fi
+                if [ -n "$resolved" ] && [ "$resolved" != "$pinned_sha" ]; then
+                  new_sha="$resolved"
+                fi
+              fi
+
+              if [ -n "$new_sha" ]; then
+                echo "$action_file: $ref@$pinned_sha # $tag -> $ref@$new_sha # $new_tag"
+                sed -i "s|${ref}@${pinned_sha}[[:space:]]*#[[:space:]]*[^[:space:]]*|${ref}@${new_sha} # ${new_tag}|" "$action_file"
+                changed=true
+              fi
+            done < <(grep -oP 'uses:\s*\K[a-zA-Z0-9_.\-]+(/[a-zA-Z0-9_.\-]+)+@[0-9a-f]{40}\s*#\s*\S+' "$action_file")
+          done
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Open PR
+        if: steps.sync.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          commit-message: "chore(ci): sync composite action pins"
+          title: "chore(ci): sync composite action pins"
+          body: >
+            Dependabot never scans `.github/actions/**/action.yml` (a documented dependabot-core
+            limitation), so pins there can silently drift from the same actions' pins elsewhere in
+            this repo, or from wherever their own recorded tag now points upstream. This PR was
+            opened by a scheduled check that re-resolves each one and syncs it.
+          branch: sync-composite-action-pins
+          base: main
+          labels: dependencies
+
+      - name: Dispatch a real ci.yml run against the sync branch
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --repo ${{ github.repository }} --ref sync-composite-action-pins

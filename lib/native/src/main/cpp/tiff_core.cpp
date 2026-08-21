@@ -67,12 +67,14 @@ void warningHandler(const char* module, const char* fmt, va_list args) {
     TIFFCORE_LOGD("%s: %s", module != nullptr ? module : "libtiff", buf);
 }
 
-void fillErrBuf(char* errBuf, size_t errBufLen, const char* fallbackMessage) {
+// Allocation-free by construction: called from catch blocks reacting to std::bad_alloc, so it
+// must never itself risk throwing.
+void fillErrBuf(char* errBuf, size_t errBufLen, const char* fallbackMessage) noexcept {
     if (errBuf == nullptr || errBufLen == 0) {
         return;
     }
-    const std::string& message = gLastError.empty() ? std::string(fallbackMessage) : gLastError;
-    std::snprintf(errBuf, errBufLen, "%s", message.c_str());
+    const char* message = gLastError.empty() ? fallbackMessage : gLastError.c_str();
+    std::snprintf(errBuf, errBufLen, "%s", message);
 }
 
 float clampFloat(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -314,59 +316,111 @@ TiffCoreStatus wrapOpenedTiff(TIFF* tiff, TiffIoKind ioKind, TiffCoreDocument** 
 
 TiffCoreStatus tiffcore_open(int fd, int64_t size, TiffCoreDocument** outDoc, char* errBuf,
         size_t errBufLen) {
+    if (outDoc == nullptr) {
+        fillErrBuf(errBuf, errBufLen, "outDoc cannot be null");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+    if (size < 0) {
+        fillErrBuf(errBuf, errBufLen, "size cannot be negative");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
     gLastError.clear();
-    TIFF* tiff = nullptr;
     try {
-        tiff = tiffrenderer::openFromFd(fd, size);
-    } catch (const std::exception&) {
+        TIFF* tiff = tiffrenderer::openFromFd(fd, size);
+        return wrapOpenedTiff(tiff, TiffIoKind::kFd, outDoc, errBuf, errBufLen);
+    } catch (...) {
         fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
         return TIFFCORE_ERROR_IO;
     }
-    return wrapOpenedTiff(tiff, TiffIoKind::kFd, outDoc, errBuf, errBufLen);
 }
 
 TiffCoreStatus tiffcore_open_path(const char* utf8Path, TiffCoreDocument** outDoc, char* errBuf,
         size_t errBufLen) {
+    if (outDoc == nullptr) {
+        fillErrBuf(errBuf, errBufLen, "outDoc cannot be null");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+    if (utf8Path == nullptr) {
+        fillErrBuf(errBuf, errBufLen, "path cannot be null");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
     gLastError.clear();
-    TIFF* tiff = TIFFOpen(utf8Path, "r");
-    return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
+    try {
+        TIFF* tiff = TIFFOpen(utf8Path, "r");
+        return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
+    } catch (...) {
+        fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
+        return TIFFCORE_ERROR_IO;
+    }
 }
 
 #ifdef _WIN32
 TiffCoreStatus tiffcore_open_path_w(const wchar_t* utf16Path, TiffCoreDocument** outDoc,
         char* errBuf, size_t errBufLen) {
+    if (outDoc == nullptr) {
+        fillErrBuf(errBuf, errBufLen, "outDoc cannot be null");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+    if (utf16Path == nullptr) {
+        fillErrBuf(errBuf, errBufLen, "path cannot be null");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
     gLastError.clear();
-    TIFF* tiff = TIFFOpenW(utf16Path, "r");
-    return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
+    try {
+        TIFF* tiff = TIFFOpenW(utf16Path, "r");
+        return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
+    } catch (...) {
+        fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
+        return TIFFCORE_ERROR_IO;
+    }
 }
 #endif
 
 TiffCoreStatus tiffcore_open_memory(const uint8_t* data, int64_t size, TiffCoreDocument** outDoc,
         char* errBuf, size_t errBufLen) {
+    if (outDoc == nullptr) {
+        fillErrBuf(errBuf, errBufLen, "outDoc cannot be null");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+    if (size < 0) {
+        fillErrBuf(errBuf, errBufLen, "size cannot be negative");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
+    if (data == nullptr && size > 0) {
+        fillErrBuf(errBuf, errBufLen, "data cannot be null when size is positive");
+        return TIFFCORE_ERROR_INVALID_ARG;
+    }
     gLastError.clear();
-    TIFF* tiff = nullptr;
     try {
-        tiff = tiffrenderer::openFromMemory(data, size);
-    } catch (const std::exception&) {
+        TIFF* tiff = tiffrenderer::openFromMemory(data, size);
+        return wrapOpenedTiff(tiff, TiffIoKind::kMemory, outDoc, errBuf, errBufLen);
+    } catch (...) {
         fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
         return TIFFCORE_ERROR_IO;
     }
-    return wrapOpenedTiff(tiff, TiffIoKind::kMemory, outDoc, errBuf, errBufLen);
 }
 
 void tiffcore_close(TiffCoreDocument* doc) {
     if (doc == nullptr) {
         return;
     }
-    closeByKind(doc->tiff, doc->ioKind);
-    delete doc;
+    try {
+        closeByKind(doc->tiff, doc->ioKind);
+        delete doc;
+    } catch (...) {
+        TIFFCORE_LOGE("tiffcore_close: unexpected exception, leaking the document handle");
+    }
 }
 
 int32_t tiffcore_get_page_count(TiffCoreDocument* doc) {
     if (doc == nullptr) {
         return 0;
     }
-    return static_cast<int32_t>(TIFFNumberOfDirectories(doc->tiff));
+    try {
+        return static_cast<int32_t>(TIFFNumberOfDirectories(doc->tiff));
+    } catch (...) {
+        return 0;
+    }
 }
 
 TiffCoreStatus tiffcore_open_page(TiffCoreDocument* doc, int32_t pageIndex, uint32_t* outWidth,
@@ -375,29 +429,38 @@ TiffCoreStatus tiffcore_open_page(TiffCoreDocument* doc, int32_t pageIndex, uint
         fillErrBuf(errBuf, errBufLen, "TIFF document is not open");
         return TIFFCORE_ERROR_ILLEGAL_STATE;
     }
-    gLastError.clear();
-    if (pageIndex < 0) {
-        fillErrBuf(errBuf, errBufLen, "page index cannot be negative");
+    if (outWidth == nullptr || outHeight == nullptr) {
+        fillErrBuf(errBuf, errBufLen, "outWidth/outHeight cannot be null");
         return TIFFCORE_ERROR_INVALID_ARG;
     }
-    TIFF* tiff = doc->tiff;
-    if (!TIFFSetDirectory(tiff, static_cast<tdir_t>(pageIndex))) {
-        fillErrBuf(errBuf, errBufLen, "cannot open TIFF page");
+    gLastError.clear();
+    try {
+        if (pageIndex < 0) {
+            fillErrBuf(errBuf, errBufLen, "page index cannot be negative");
+            return TIFFCORE_ERROR_INVALID_ARG;
+        }
+        TIFF* tiff = doc->tiff;
+        if (!TIFFSetDirectory(tiff, static_cast<tdir_t>(pageIndex))) {
+            fillErrBuf(errBuf, errBufLen, "cannot open TIFF page");
+            return TIFFCORE_ERROR_IO;
+        }
+
+        uint32_t width = 0;
+        uint32_t height = 0;
+        TIFFGetField(tiff, TIFFTAG_IMAGEWIDTH, &width);
+        TIFFGetField(tiff, TIFFTAG_IMAGELENGTH, &height);
+        if (width == 0 || height == 0) {
+            fillErrBuf(errBuf, errBufLen, "invalid TIFF page dimensions");
+            return TIFFCORE_ERROR_IO;
+        }
+
+        *outWidth = width;
+        *outHeight = height;
+        return TIFFCORE_OK;
+    } catch (...) {
+        fillErrBuf(errBuf, errBufLen, "unexpected internal error opening TIFF page");
         return TIFFCORE_ERROR_IO;
     }
-
-    uint32_t width = 0;
-    uint32_t height = 0;
-    TIFFGetField(tiff, TIFFTAG_IMAGEWIDTH, &width);
-    TIFFGetField(tiff, TIFFTAG_IMAGELENGTH, &height);
-    if (width == 0 || height == 0) {
-        fillErrBuf(errBuf, errBufLen, "invalid TIFF page dimensions");
-        return TIFFCORE_ERROR_IO;
-    }
-
-    *outWidth = width;
-    *outHeight = height;
-    return TIFFCORE_OK;
 }
 
 TiffCoreStatus tiffcore_retain_raster(TiffCoreDocument* doc, int32_t pageIndex, char* errBuf,
@@ -407,37 +470,51 @@ TiffCoreStatus tiffcore_retain_raster(TiffCoreDocument* doc, int32_t pageIndex, 
         return TIFFCORE_ERROR_ILLEGAL_STATE;
     }
     gLastError.clear();
-
-    uint32_t width;
-    uint32_t height;
-    std::vector<uint32_t> raster;
-    bool partial = false;
-    if (!decodePage(doc->tiff, pageIndex, &width, &height, &raster, &partial, errBuf, errBufLen)) {
+    try {
+        uint32_t width;
+        uint32_t height;
+        std::vector<uint32_t> raster;
+        bool partial = false;
+        if (!decodePage(doc->tiff, pageIndex, &width, &height, &raster, &partial, errBuf,
+                    errBufLen)) {
+            return TIFFCORE_ERROR_IO;
+        }
+        doc->cachedRaster = std::move(raster);
+        doc->cachedWidth = width;
+        doc->cachedHeight = height;
+        doc->cachedPartial = partial;
+        doc->cachedPageIndex = pageIndex;
+        return partial ? TIFFCORE_OK_PARTIAL : TIFFCORE_OK;
+    } catch (...) {
+        fillErrBuf(errBuf, errBufLen, "unexpected internal error decoding TIFF page");
         return TIFFCORE_ERROR_IO;
     }
-    doc->cachedRaster = std::move(raster);
-    doc->cachedWidth = width;
-    doc->cachedHeight = height;
-    doc->cachedPartial = partial;
-    doc->cachedPageIndex = pageIndex;
-    return partial ? TIFFCORE_OK_PARTIAL : TIFFCORE_OK;
 }
 
 void tiffcore_release_raster(TiffCoreDocument* doc) {
     if (doc == nullptr) {
         return;
     }
-    doc->cachedPageIndex = -1;
-    doc->cachedWidth = 0;
-    doc->cachedHeight = 0;
-    doc->cachedPartial = false;
-    std::vector<uint32_t>().swap(doc->cachedRaster);  // release the backing memory, not just clear()
+    try {
+        doc->cachedPageIndex = -1;
+        doc->cachedWidth = 0;
+        doc->cachedHeight = 0;
+        doc->cachedPartial = false;
+        // release the backing memory, not just clear()
+        std::vector<uint32_t>().swap(doc->cachedRaster);
+    } catch (...) {
+        TIFFCORE_LOGE("tiffcore_release_raster: unexpected exception");
+    }
 }
 
 TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, uint32_t* dstPixels,
         int32_t dstStridePixels, int32_t dstWidth, int32_t dstHeight, int32_t clipLeft,
         int32_t clipTop, int32_t clipRight, int32_t clipBottom, const float matrix[6],
         TiffCoreRenderMode renderMode, char* errBuf, size_t errBufLen) {
+    // Cleared before any fillErrBuf call below, including the early-return validations: fillErrBuf
+    // prefers a non-empty gLastError over its own fallback message, so a stale message left behind
+    // by an unrelated earlier call would otherwise mask these fallbacks entirely.
+    gLastError.clear();
     if (doc == nullptr) {
         fillErrBuf(errBuf, errBufLen, "TIFF document is not open");
         return TIFFCORE_ERROR_ILLEGAL_STATE;
@@ -454,101 +531,107 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
         fillErrBuf(errBuf, errBufLen, "dstStridePixels cannot be smaller than dstWidth");
         return TIFFCORE_ERROR_INVALID_ARG;
     }
-    gLastError.clear();
 
-    // Never trust caller-supplied clip bounds; check before paying for a decode.
-    if (clipLeft < 0 || clipTop < 0 || clipLeft >= clipRight || clipTop >= clipBottom
-            || clipRight > dstWidth || clipBottom > dstHeight) {
-        fillErrBuf(errBuf, errBufLen, "clip bounds outside destination bitmap");
-        return TIFFCORE_ERROR_INVALID_ARG;
-    }
-
-    // matrix[] is in android.graphics.Matrix#getValues() order; perspective terms are ignored
-    // since the caller has already rejected non-affine transforms.
-    const tiffrenderer::AffineTransform forward(matrix[0], matrix[1], matrix[2], matrix[3],
-            matrix[4], matrix[5]);
-    tiffrenderer::AffineTransform inverse;
-    if (!forward.invert(&inverse)) {
-        fillErrBuf(errBuf, errBufLen, "transform is not invertible");
-        return TIFFCORE_ERROR_INVALID_ARG;
-    }
-
-    // Reuse the retainRaster() cache instead of redecoding if it matches this page.
-    uint32_t srcWidth;
-    uint32_t srcHeight;
-    const uint32_t* srcRaster;
-    std::vector<uint32_t> decoded;
-    bool partial = false;
-    if (doc->cachedPageIndex == pageIndex) {
-        srcWidth = doc->cachedWidth;
-        srcHeight = doc->cachedHeight;
-        srcRaster = doc->cachedRaster.data();
-        partial = doc->cachedPartial;
-    } else {
-        if (!decodePage(doc->tiff, pageIndex, &srcWidth, &srcHeight, &decoded, &partial, errBuf,
-                    errBufLen)) {
-            return TIFFCORE_ERROR_IO;
+    try {
+        // Never trust caller-supplied clip bounds; check before paying for a decode.
+        if (clipLeft < 0 || clipTop < 0 || clipLeft >= clipRight || clipTop >= clipBottom
+                || clipRight > dstWidth || clipBottom > dstHeight) {
+            fillErrBuf(errBuf, errBufLen, "clip bounds outside destination bitmap");
+            return TIFFCORE_ERROR_INVALID_ARG;
         }
-        srcRaster = decoded.data();
-    }
 
-    const int iSrcWidth = static_cast<int>(srcWidth);
-    const int iSrcHeight = static_cast<int>(srcHeight);
-    const bool bilinear = renderMode == TIFFCORE_RENDER_MODE_DISPLAY;
+        // matrix[] is in android.graphics.Matrix#getValues() order; perspective terms are ignored
+        // since the caller has already rejected non-affine transforms.
+        const tiffrenderer::AffineTransform forward(matrix[0], matrix[1], matrix[2], matrix[3],
+                matrix[4], matrix[5]);
+        tiffrenderer::AffineTransform inverse;
+        if (!forward.invert(&inverse)) {
+            fillErrBuf(errBuf, errBufLen, "transform is not invertible");
+            return TIFFCORE_ERROR_INVALID_ARG;
+        }
 
-    // Minification (scale < 1 on either axis) needs a pre-downsampled mip level, not just a
-    // smaller sample window into the full-res raster: sampleBilinear/sampleNearest only ever look
-    // at 4 (or 1) source pixels around one point, regardless of how many source pixels an output
-    // pixel actually covers, so without this a large scan shrunk into a small view aliases badly.
-    const float scaleX = std::sqrt(matrix[0] * matrix[0] + matrix[3] * matrix[3]);
-    const float scaleY = std::sqrt(matrix[1] * matrix[1] + matrix[4] * matrix[4]);
-    const float minScale = std::min(scaleX, scaleY);
-    int mipLevels = 0;
-    if (minScale > 0.0f && minScale < 1.0f) {
-        mipLevels = static_cast<int>(std::floor(std::log2(1.0f / minScale)));
-    }
-    // Two alternating buffers rather than one reassigned in place: halveRaster's own inputs
-    // (sampleRaster, pointing into whichever buffer produced the previous level) must stay valid
-    // for the full duration of the call that produces the next level, not just until some
-    // reassignment happens to run after the call returns.
-    std::vector<uint32_t> mipBufferA;
-    std::vector<uint32_t> mipBufferB;
-    bool useBufferA = true;
-    const uint32_t* sampleRaster = srcRaster;
-    int sampleWidth = iSrcWidth;
-    int sampleHeight = iSrcHeight;
-    float mipScale = 1.0f;
-    for (int level = 0; level < mipLevels && (sampleWidth > 1 || sampleHeight > 1); level++) {
-        int nextWidth;
-        int nextHeight;
-        std::vector<uint32_t>& mipBuffer = useBufferA ? mipBufferA : mipBufferB;
-        mipBuffer = halveRaster(sampleRaster, sampleWidth, sampleHeight, &nextWidth, &nextHeight);
-        sampleRaster = mipBuffer.data();
-        useBufferA = !useBufferA;
-        sampleWidth = nextWidth;
-        sampleHeight = nextHeight;
-        mipScale *= 2.0f;
-    }
-
-    for (int32_t y = clipTop; y < clipBottom; y++) {
-        for (int32_t x = clipLeft; x < clipRight; x++) {
-            float srcX;
-            float srcY;
-            inverse.apply(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f, &srcX,
-                    &srcY);
-            if (srcX < 0 || srcY < 0 || srcX >= iSrcWidth || srcY >= iSrcHeight) {
-                // Outside the source page: leave the destination pixel untouched (same contract
-                // as PdfRenderer.Page#render).
-                continue;
+        // Reuse the retainRaster() cache instead of redecoding if it matches this page.
+        uint32_t srcWidth;
+        uint32_t srcHeight;
+        const uint32_t* srcRaster;
+        std::vector<uint32_t> decoded;
+        bool partial = false;
+        if (doc->cachedPageIndex == pageIndex) {
+            srcWidth = doc->cachedWidth;
+            srcHeight = doc->cachedHeight;
+            srcRaster = doc->cachedRaster.data();
+            partial = doc->cachedPartial;
+        } else {
+            if (!decodePage(doc->tiff, pageIndex, &srcWidth, &srcHeight, &decoded, &partial, errBuf,
+                        errBufLen)) {
+                return TIFFCORE_ERROR_IO;
             }
-            const float sampleX = srcX / mipScale;
-            const float sampleY = srcY / mipScale;
-            dstPixels[static_cast<size_t>(y) * static_cast<size_t>(dstStridePixels)
-                    + static_cast<size_t>(x)] = bilinear
-                    ? sampleBilinear(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY)
-                    : sampleNearest(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY);
+            srcRaster = decoded.data();
         }
-    }
 
-    return partial ? TIFFCORE_OK_PARTIAL : TIFFCORE_OK;
+        const int iSrcWidth = static_cast<int>(srcWidth);
+        const int iSrcHeight = static_cast<int>(srcHeight);
+        const bool bilinear = renderMode == TIFFCORE_RENDER_MODE_DISPLAY;
+
+        // Minification (scale < 1 on either axis) needs a pre-downsampled mip level, not just a
+        // smaller sample window into the full-res raster: sampleBilinear/sampleNearest only ever
+        // look at 4 (or 1) source pixels around one point, regardless of how many source pixels an
+        // output pixel actually covers, so without this a large scan shrunk into a small view
+        // aliases badly.
+        const float scaleX = std::sqrt(matrix[0] * matrix[0] + matrix[3] * matrix[3]);
+        const float scaleY = std::sqrt(matrix[1] * matrix[1] + matrix[4] * matrix[4]);
+        const float minScale = std::min(scaleX, scaleY);
+        int mipLevels = 0;
+        if (minScale > 0.0f && minScale < 1.0f) {
+            mipLevels = static_cast<int>(std::floor(std::log2(1.0f / minScale)));
+        }
+        // Two alternating buffers rather than one reassigned in place: halveRaster's own inputs
+        // (sampleRaster, pointing into whichever buffer produced the previous level) must stay
+        // valid for the full duration of the call that produces the next level, not just until
+        // some reassignment happens to run after the call returns.
+        std::vector<uint32_t> mipBufferA;
+        std::vector<uint32_t> mipBufferB;
+        bool useBufferA = true;
+        const uint32_t* sampleRaster = srcRaster;
+        int sampleWidth = iSrcWidth;
+        int sampleHeight = iSrcHeight;
+        float mipScale = 1.0f;
+        for (int level = 0; level < mipLevels && (sampleWidth > 1 || sampleHeight > 1); level++) {
+            int nextWidth;
+            int nextHeight;
+            std::vector<uint32_t>& mipBuffer = useBufferA ? mipBufferA : mipBufferB;
+            mipBuffer = halveRaster(sampleRaster, sampleWidth, sampleHeight, &nextWidth,
+                    &nextHeight);
+            sampleRaster = mipBuffer.data();
+            useBufferA = !useBufferA;
+            sampleWidth = nextWidth;
+            sampleHeight = nextHeight;
+            mipScale *= 2.0f;
+        }
+
+        for (int32_t y = clipTop; y < clipBottom; y++) {
+            for (int32_t x = clipLeft; x < clipRight; x++) {
+                float srcX;
+                float srcY;
+                inverse.apply(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f, &srcX,
+                        &srcY);
+                if (srcX < 0 || srcY < 0 || srcX >= iSrcWidth || srcY >= iSrcHeight) {
+                    // Outside the source page: leave the destination pixel untouched (same
+                    // contract as PdfRenderer.Page#render).
+                    continue;
+                }
+                const float sampleX = srcX / mipScale;
+                const float sampleY = srcY / mipScale;
+                dstPixels[static_cast<size_t>(y) * static_cast<size_t>(dstStridePixels)
+                        + static_cast<size_t>(x)] = bilinear
+                        ? sampleBilinear(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY)
+                        : sampleNearest(sampleRaster, sampleWidth, sampleHeight, sampleX, sampleY);
+            }
+        }
+
+        return partial ? TIFFCORE_OK_PARTIAL : TIFFCORE_OK;
+    } catch (...) {
+        fillErrBuf(errBuf, errBufLen, "unexpected internal error rendering TIFF page");
+        return TIFFCORE_ERROR_IO;
+    }
 }

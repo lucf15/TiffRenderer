@@ -8,5 +8,9 @@ public class TiffTransform(values: FloatArray) {
         require(values.size == 6) { "values must have 6 elements (mxx,mxy,mtx,myx,myy,mty), got ${values.size}" }
     }
 
-    public val values: FloatArray = values.copyOf()
+    private val backingValues: FloatArray = values.copyOf()
+
+    /** A copy, not the live backing array: mutating the result can't corrupt this transform for
+     * any other holder reusing it across calls. */
+    public val values: FloatArray get() = backingValues.copyOf()
 }

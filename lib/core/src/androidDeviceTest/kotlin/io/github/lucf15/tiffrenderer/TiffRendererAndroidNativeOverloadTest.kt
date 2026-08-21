@@ -9,9 +9,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-/** The Android-native convenience overloads (`android.graphics.Bitmap`/`Matrix`/`Rect` directly,
- * no common [TiffBitmap]/[TiffTransform]/[TiffRect] wrapping) that only exist on this platform;
- * everything shared with JVM/iOS lives in `integrationTest` instead. */
+/** The Android-native convenience overloads (`Bitmap`/`Matrix`/`Rect` directly); everything shared
+ * with JVM/iOS lives in `integrationTest` instead. */
 class TiffRendererAndroidNativeOverloadTest {
 
     companion object {

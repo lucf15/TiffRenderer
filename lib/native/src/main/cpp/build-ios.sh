@@ -2,18 +2,11 @@
 set -euo pipefail
 
 # Cross-compiles tiffrenderer_core (vendored libtiff/libjpeg/libwebp + tiff_core.cpp/tiff_io.cpp,
-# no JNI) as a static library for each iOS Kotlin/Native target: same CMakeLists.txt and submodules
-# as the Android NDK build, just a different CMAKE_SYSTEM_NAME/sysroot/arch triple, guarded by the
-# `if(ANDROID)` block around the JNI target. :lib:native's buildTiffCoreForIos Gradle task runs
-# this automatically before iOS cinterop, so it doesn't normally need to be run by hand. Output
-# defaults to this module's own build/ios/ (so `clean` reaches it); pass an output dir explicitly
-# to override.
+# no JNI) as a static library per iOS Kotlin/Native target; runs automatically via
+# :lib:native's buildTiffCoreForIos Gradle task, so it doesn't normally need to be run by hand.
 #
-# Requires Xcode (for the iOS SDKs/toolchain) and a CMake new enough to drive the Xcode generator
-# for iOS cross-compilation cleanly. The NDK-side CMake 3.22.1 pinned in lib/native/build.gradle.kts
-# hits a known CMake/Xcode incompatibility building for iOS (the compiler-ID probe project fails to
-# code-sign under recent Xcode), so this script looks for a newer CMake instead. That's a wholly
-# separate build leg from the Android one the 3.22.1 pin is about; it doesn't change that pin.
+# Needs a CMake newer than the NDK-pinned 3.22.1: that version's Xcode-generator compiler-ID probe
+# fails to code-sign under recent Xcode. A separate concern from the Android NDK CMake pin itself.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${1:-${SCRIPT_DIR}/../../../build/ios}"

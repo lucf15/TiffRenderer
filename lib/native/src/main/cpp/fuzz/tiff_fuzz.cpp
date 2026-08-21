@@ -24,7 +24,7 @@
 namespace {
 
 // Trailing control bytes for render() params, so the document itself still starts at byte 0.
-constexpr size_t kControlBytes = 9;
+constexpr size_t kControlBytes = 11;
 
 // Drives every tiffcore_* entry point a real TiffRenderer session exercises, over hostile input.
 // tiffcore_open_memory copies its input internally, so libFuzzer's own input buffer never has to
@@ -49,7 +49,15 @@ void fuzzOneDocument(const uint8_t* data, size_t size) {
     const int32_t pagesToTry = pageCount > 8 ? 8 : pageCount;
 
     constexpr int32_t kDstSize = 64;
-    std::vector<uint32_t> dst(static_cast<size_t>(kDstSize) * kDstSize, 0);
+    // Occasionally wider than kDstSize, to exercise the dstStridePixels != dstWidth path a real
+    // Android AndroidBitmap row stride can hit but every current in-process caller (JVM, iOS) never
+    // does.
+    const int32_t dstStride = kDstSize + static_cast<int32_t>(control[10] % 16);
+    std::vector<uint32_t> dst(static_cast<size_t>(dstStride) * kDstSize, 0);
+    // Half the time, retain the raster before rendering so tiffcore_render_page's
+    // doc->cachedPageIndex == pageIndex branch (reusing the cache instead of redecoding) is
+    // actually exercised, not just its always-miss default.
+    const bool retainBeforeRender = (control[9] & 1) != 0;
 
     const TiffCoreRenderMode renderMode =
             (control[0] & 1) ? TIFFCORE_RENDER_MODE_DISPLAY : TIFFCORE_RENDER_MODE_PRINT;
@@ -79,11 +87,17 @@ void fuzzOneDocument(const uint8_t* data, size_t size) {
             continue;
         }
 
-        tiffcore_render_page(doc, pageIndex, dst.data(), kDstSize, kDstSize, kDstSize, clipLeft, clipTop,
+        if (retainBeforeRender) {
+            tiffcore_retain_raster(doc, pageIndex, errBuf, sizeof(errBuf));
+        }
+
+        tiffcore_render_page(doc, pageIndex, dst.data(), dstStride, kDstSize, kDstSize, clipLeft, clipTop,
                 clipRight, clipBottom, matrix, renderMode, errBuf, sizeof(errBuf));
 
+        if (!retainBeforeRender) {
+            tiffcore_retain_raster(doc, pageIndex, errBuf, sizeof(errBuf));
+        }
         // release_raster is documented safe to call unconditionally, matching TiffPage#close().
-        tiffcore_retain_raster(doc, pageIndex, errBuf, sizeof(errBuf));
         tiffcore_release_raster(doc);
     }
 

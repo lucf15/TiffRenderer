@@ -34,6 +34,12 @@ class TiffBitmapWrappingTest {
     }
 
     @Test
+    fun wrapping_readOnlyBuffer_throwsIllegalArgumentException() {
+        val buffer = ByteBuffer.allocateDirect(10 * 10 * 4).asReadOnlyBuffer()
+        assertFailsWith<IllegalArgumentException> { TiffBitmap.wrapping(buffer, 10, 10) }
+    }
+
+    @Test
     fun wrapping_largerArenaBuffer_toByteArrayReturnsExactImageSizeNotArenaSize() {
         TiffRenderer(Fixtures.open("single_page_rgb.tif")).use { renderer ->
             val imageBytes = 32 * 24 * 4

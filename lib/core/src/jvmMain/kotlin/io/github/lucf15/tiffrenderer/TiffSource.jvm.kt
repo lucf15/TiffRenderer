@@ -12,7 +12,7 @@ public actual class TiffSource private constructor(
 
     internal actual fun markConsumed(): Boolean = consumedFlag.compareAndSet(false, true)
 
-    internal actual fun release() {
+    public actual fun release() {
         // No real resource to free here (path/bytes need no cleanup); keeps the same once-only contract Android/iOS enforce.
         releasedFlag.compareAndSet(false, true)
     }

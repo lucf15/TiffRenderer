@@ -20,7 +20,7 @@ public actual class TiffSource private constructor(internal val fd: Int, interna
         }
     }
 
-    internal actual fun release() {
+    public actual fun release() {
         releasedLock.lock()
         try {
             if (releasedFlag) return
@@ -32,6 +32,9 @@ public actual class TiffSource private constructor(internal val fd: Int, interna
     }
 
     public companion object {
-        public fun fromFileDescriptor(fd: Int, size: Long): TiffSource = TiffSource(fd, size)
+        public fun fromFileDescriptor(fd: Int, size: Long): TiffSource {
+            require(size >= 0) { "size cannot be negative, was $size" }
+            return TiffSource(fd, size)
+        }
     }
 }

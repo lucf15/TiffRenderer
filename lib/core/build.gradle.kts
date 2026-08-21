@@ -23,6 +23,7 @@ if (bcvKlibPipelineHostRecognized) {
 kotlin {
     applyDefaultHierarchyTemplate()
     explicitApi()
+    jvmToolchain(libs.versions.jvmToolchain.get().toInt())
 
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -56,10 +57,17 @@ kotlin {
     }
 
     sourceSets {
-        androidMain.dependencies {
-            implementation(project(":lib:native"))
+        val jvmAndroidMain = create("jvmAndroidMain") {
+            dependsOn(commonMain.get())
+        }
+        androidMain {
+            dependsOn(jvmAndroidMain)
+            dependencies {
+                implementation(project(":lib:native"))
+            }
         }
         jvmMain {
+            dependsOn(jvmAndroidMain)
             resources.srcDir(nativeCore.layout.buildDirectory.dir("jvm"))
         }
         commonTest.dependencies {

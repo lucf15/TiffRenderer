@@ -15,3 +15,12 @@ public expect fun createTiffBitmap(width: Int, height: Int): TiffBitmap
  * own native pixel layout to match, so cross-platform test assertions don't need to know which
  * platform they're running on. */
 internal expect fun TiffBitmap.pixelAt(x: Int, y: Int): Int
+
+/** Shared by the iOS/JVM `actual`s, which allocate their own pixel buffer sized `width * height`;
+ * Android's doesn't need this since it wraps an existing, already-allocated `Bitmap`. */
+internal fun requirePositiveNonOverflowingBitmapDimensions(width: Int, height: Int) {
+    require(width > 0 && height > 0) { "width/height must be positive, got ${width}x$height" }
+    require(width.toLong() * height.toLong() * 4 <= Int.MAX_VALUE) {
+        "width * height overflows Int, got ${width}x$height"
+    }
+}

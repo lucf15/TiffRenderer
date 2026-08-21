@@ -35,12 +35,20 @@ if(NOT MSVC)
         $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE>
         $<$<NOT:$<CONFIG:Debug>>:-D_FORTIFY_SOURCE=${TIFFRENDERER_FORTIFY_LEVEL}>
     )
+else()
+    add_compile_options(/guard:cf)
+    add_link_options(/guard:cf)
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID)
-    find_library(TIFFRENDERER_SHARED_ZLIB NAMES libz.so)
-    if(TIFFRENDERER_SHARED_ZLIB)
-        set(ZLIB_LIBRARY ${TIFFRENDERER_SHARED_ZLIB} CACHE FILEPATH "" FORCE)
+    find_library(TIFFRENDERER_STATIC_ZLIB NAMES libz.a)
+    if(TIFFRENDERER_STATIC_ZLIB)
+        set(ZLIB_LIBRARY ${TIFFRENDERER_STATIC_ZLIB} CACHE FILEPATH "" FORCE)
+    else()
+        find_library(TIFFRENDERER_SHARED_ZLIB NAMES libz.so)
+        if(TIFFRENDERER_SHARED_ZLIB)
+            set(ZLIB_LIBRARY ${TIFFRENDERER_SHARED_ZLIB} CACHE FILEPATH "" FORCE)
+        endif()
     endif()
 endif()
 
@@ -156,6 +164,8 @@ target_link_libraries(tiffrenderer_core PUBLIC tiff)
 target_include_directories(tiffrenderer_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 if(NOT MSVC)
     target_compile_options(tiffrenderer_core PRIVATE -Wall -Wextra $<$<BOOL:${TIFFRENDERER_WERROR}>:-Werror>)
+else()
+    target_compile_options(tiffrenderer_core PRIVATE /W4 $<$<BOOL:${TIFFRENDERER_WERROR}>:/WX>)
 endif()
 
 # --- JNI wrapper (Android only) -----------------------------------------------
@@ -165,6 +175,7 @@ endif()
 if(ANDROID)
     add_library(tiffrenderer_jni SHARED
         tiff_renderer_jni.cpp
+        jni_shared.cpp
     )
 
     find_library(log-lib log)
@@ -190,12 +201,15 @@ if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 
     add_library(tiffrenderer_jni_jvm SHARED
         tiff_renderer_jni_jvm.cpp
+        jni_shared.cpp
     )
 
     target_include_directories(tiffrenderer_jni_jvm PRIVATE ${JNI_INCLUDE_DIRS})
     target_link_libraries(tiffrenderer_jni_jvm PRIVATE tiffrenderer_core)
     if(NOT MSVC)
         target_compile_options(tiffrenderer_jni_jvm PRIVATE -Wall -Wextra $<$<BOOL:${TIFFRENDERER_WERROR}>:-Werror>)
+    else()
+        target_compile_options(tiffrenderer_jni_jvm PRIVATE /W4 $<$<BOOL:${TIFFRENDERER_WERROR}>:/WX>)
     endif()
     if(APPLE)
         target_link_options(tiffrenderer_jni_jvm PRIVATE "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/jni_exports.macos.txt")

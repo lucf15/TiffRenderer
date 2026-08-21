@@ -1,0 +1,34 @@
+name: Set up JVM toolchain and test
+description: >
+  Installs JDK/Gradle for the given OS/arch (plus the Android SDK on hosted-ARM runners, needed
+  for their cmake), then runs the given Gradle tasks.
+
+inputs:
+  os:
+    description: The runner OS (matrix.os), used to decide whether the Android SDK/cmake is needed
+    required: true
+  java-distribution:
+    required: true
+  java-arch:
+    required: true
+  gradle-tasks:
+    default: ":lib:core:jvmTest :sample:desktopApp:jar"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      with:
+        distribution: ${{ inputs.java-distribution }}
+        java-version: "17"
+        architecture: ${{ inputs.java-arch }}
+
+    - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      if: contains(fromJSON('["ubuntu-24.04-arm", "windows-11-arm"]'), inputs.os)
+      with:
+        packages: ""
+
+    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+
+    - shell: bash
+      run: ./gradlew ${{ inputs.gradle-tasks }}

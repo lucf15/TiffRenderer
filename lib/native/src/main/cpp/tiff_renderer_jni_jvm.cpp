@@ -18,52 +18,17 @@
 
 #include <cstdint>
 
+#include "jni_shared.h"
 #include "tiff_core.h"
+
+// Scaffolding shared with the Android JNI shim lives in jni_shared.h/.cpp instead; only
+// nativeOpen/nativeOpenBytes and nativeRenderPage genuinely differ per platform.
 
 namespace tiffrenderer {
 
 namespace {
 
 constexpr size_t kErrBufSize = 512;
-
-TiffCoreDocument* asDocument(jlong documentPtr) {
-    return reinterpret_cast<TiffCoreDocument*>(static_cast<intptr_t>(documentPtr));
-}
-
-void throwException(JNIEnv* env, const char* className, const char* message) {
-    jclass clazz = env->FindClass(className);
-    if (clazz == nullptr) {
-        return;
-    }
-    env->ThrowNew(clazz, message);
-    env->DeleteLocalRef(clazz);
-}
-
-bool requireDocument(JNIEnv* env, jlong documentPtr) {
-    if (documentPtr == 0) {
-        throwException(env, "java/lang/IllegalStateException", "TIFF document is not open");
-        return false;
-    }
-    return true;
-}
-
-void throwForStatus(JNIEnv* env, TiffCoreStatus status, const char* errBuf,
-        const char* fallbackMessage) {
-    const char* message = (errBuf != nullptr && errBuf[0] != '\0') ? errBuf : fallbackMessage;
-    switch (status) {
-        case TIFFCORE_ERROR_INVALID_ARG:
-            throwException(env, "java/lang/IllegalArgumentException", message);
-            break;
-        case TIFFCORE_ERROR_ILLEGAL_STATE:
-            throwException(env, "java/lang/IllegalStateException", message);
-            break;
-        case TIFFCORE_OK:
-        case TIFFCORE_ERROR_IO:
-        default:
-            throwException(env, "java/io/IOException", message);
-            break;
-    }
-}
 
 jlong nativeOpen(JNIEnv* env, jclass /*clazz*/, jstring path) {
     if (path == nullptr) {
@@ -128,44 +93,6 @@ jlong nativeOpenBytes(JNIEnv* env, jclass /*clazz*/, jbyteArray bytes) {
     return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
 }
 
-void nativeClose(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
-    if (documentPtr == 0) {
-        return;
-    }
-    tiffcore_close(asDocument(documentPtr));
-}
-
-jint nativeGetPageCount(JNIEnv* env, jclass /*clazz*/, jlong documentPtr) {
-    if (!requireDocument(env, documentPtr)) {
-        return 0;
-    }
-    return static_cast<jint>(tiffcore_get_page_count(asDocument(documentPtr)));
-}
-
-void nativeOpenPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
-        jintArray outSize) {
-    if (!requireDocument(env, documentPtr)) {
-        return;
-    }
-    if (outSize == nullptr) {
-        throwException(env, "java/lang/IllegalArgumentException", "outSize cannot be null");
-        return;
-    }
-
-    uint32_t width = 0;
-    uint32_t height = 0;
-    char errBuf[kErrBufSize] = {};
-    const TiffCoreStatus status = tiffcore_open_page(asDocument(documentPtr), pageIndex, &width,
-            &height, errBuf, sizeof(errBuf));
-    if (status != TIFFCORE_OK) {
-        throwForStatus(env, status, errBuf, "cannot open TIFF page");
-        return;
-    }
-
-    const jint size[2] = {static_cast<jint>(width), static_cast<jint>(height)};
-    env->SetIntArrayRegion(outSize, 0, 2, size);
-}
-
 jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
         jobject destination, jint dstWidth, jint dstHeight, jint clipLeft, jint clipTop,
         jint clipRight, jint clipBottom, jfloatArray matrixValues, jint renderMode) {
@@ -197,8 +124,18 @@ jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint
         return JNI_FALSE;
     }
     const jlong bufferCapacity = env->GetDirectBufferCapacity(destination);
-    const int64_t requiredBytes =
-            static_cast<int64_t>(dstWidth) * static_cast<int64_t>(dstHeight) * 4;
+    // dstWidth/dstHeight are only checked > 0 above, not upper-bounded: divide before multiplying
+    // so an extreme (but individually valid) jint pair can't silently overflow int64_t and slip
+    // past the capacity check below.
+    constexpr int64_t kBytesPerPixel = 4;
+    constexpr int64_t kInt64Max = INT64_MAX;
+    const int64_t w = static_cast<int64_t>(dstWidth);
+    const int64_t h = static_cast<int64_t>(dstHeight);
+    if (w > (kInt64Max / kBytesPerPixel) / h) {
+        throwException(env, "java/lang/IllegalArgumentException", "destination dimensions too large");
+        return JNI_FALSE;
+    }
+    const int64_t requiredBytes = w * h * kBytesPerPixel;
     if (bufferCapacity < 0 || bufferCapacity < requiredBytes) {
         throwException(env, "java/lang/IllegalArgumentException",
                 "destination smaller than dstWidth * dstHeight * 4 bytes");
@@ -224,27 +161,6 @@ jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint
     return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
 }
 
-jboolean nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex) {
-    if (!requireDocument(env, documentPtr)) {
-        return JNI_FALSE;
-    }
-    char errBuf[kErrBufSize] = {};
-    const TiffCoreStatus status = tiffcore_retain_raster(asDocument(documentPtr), pageIndex,
-            errBuf, sizeof(errBuf));
-    if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
-        throwForStatus(env, status, errBuf, "failed to decode TIFF page");
-        return JNI_FALSE;
-    }
-    return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
-}
-
-void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
-    if (documentPtr == 0) {
-        return;
-    }
-    tiffcore_release_raster(asDocument(documentPtr));
-}
-
 // JNINativeMethod's name/signature fields are plain char* per the JNI spec (not const char*), so
 // every string literal below needs an explicit const_cast rather than an implicit (and, under
 // -Werror, rejected) literal-to-char* conversion.
@@ -253,13 +169,17 @@ void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
 const JNINativeMethod gMethods[] = {
         {JNI_STR("nativeOpen"), JNI_STR("(Ljava/lang/String;)J"), reinterpret_cast<void*>(nativeOpen)},
         {JNI_STR("nativeOpenBytes"), JNI_STR("([B)J"), reinterpret_cast<void*>(nativeOpenBytes)},
-        {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeClose)},
-        {JNI_STR("nativeGetPageCount"), JNI_STR("(J)I"), reinterpret_cast<void*>(nativeGetPageCount)},
-        {JNI_STR("nativeOpenPage"), JNI_STR("(JI[I)V"), reinterpret_cast<void*>(nativeOpenPage)},
+        {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(tiffrenderer::nativeClose)},
+        {JNI_STR("nativeGetPageCount"), JNI_STR("(J)I"),
+                reinterpret_cast<void*>(tiffrenderer::nativeGetPageCount)},
+        {JNI_STR("nativeOpenPage"), JNI_STR("(JI[I)V"),
+                reinterpret_cast<void*>(tiffrenderer::nativeOpenPage)},
         {JNI_STR("nativeRenderPage"), JNI_STR("(JILjava/nio/ByteBuffer;IIIIII[FI)Z"),
                 reinterpret_cast<void*>(nativeRenderPage)},
-        {JNI_STR("nativeRetainRaster"), JNI_STR("(JI)Z"), reinterpret_cast<void*>(nativeRetainRaster)},
-        {JNI_STR("nativeReleaseRaster"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeReleaseRaster)},
+        {JNI_STR("nativeRetainRaster"), JNI_STR("(JI)Z"),
+                reinterpret_cast<void*>(tiffrenderer::nativeRetainRaster)},
+        {JNI_STR("nativeReleaseRaster"), JNI_STR("(J)V"),
+                reinterpret_cast<void*>(tiffrenderer::nativeReleaseRaster)},
 };
 
 #undef JNI_STR

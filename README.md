@@ -148,17 +148,8 @@ building any platform.
 
 ## Getting started
 
-```kotlin
-import io.github.lucf15.tiffrenderer.TiffRenderer
-import io.github.lucf15.tiffrenderer.TiffRenderMode
-
-TiffRenderer(TiffSource.fromFileDescriptor(fd, size)).use { renderer ->
-    renderer.openPage(0).use { page ->
-        val bitmap = createTiffBitmap(page.width, page.height)
-        page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
-    }
-}
-```
+The snippet at the top of this README is the minimal case: open a source, open a page, render it.
+A few more common cases:
 
 Rendering into a sub-region with a custom transform:
 
@@ -238,7 +229,7 @@ val bitmap = TiffBitmap.wrapping(buffer, width, height)
 page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY) // render into `buffer` again on the next call
 ```
 
-`TiffBitmap.wrapping` requires a direct buffer at least `width * height * 4` bytes.
+`TiffBitmap.wrapping` requires a direct, writable buffer at least `width * height * 4` bytes.
 
 ## Lifecycle
 
@@ -265,7 +256,9 @@ page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY) // render into `buf
   attempting the decode, to fail cleanly instead of risking an OOM kill.
 - **`TiffSource` is single-use.** Each `TiffSource` is consumed by the `TiffRenderer` it's passed
   to, even if construction fails; passing the same instance to a second `TiffRenderer` throws
-  `IllegalStateException`.
+  `IllegalStateException`. If a source is created but never handed to a `TiffRenderer` at all, call
+  `release()` on it directly to free its underlying resource (e.g. a file descriptor) instead of
+  leaving that to happen whenever the object is garbage-collected.
 - **No color management, no >8-bit precision.** Decoding goes through libtiff's
   `TIFFReadRGBAImageOriented`, which flattens 16-bit-per-channel and floating-point TIFFs to plain
   8-bit RGBA and ignores any embedded ICC profile. Scientific/medical TIFFs relying on higher

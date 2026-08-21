@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -56,42 +56,7 @@ jobs:
           path: lib/core/build/outputs/aar/core.aar
           if-no-files-found: error
 
-      - name: Enable KVM for the emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: AVD cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-34-google_apis-x86_64
-
-      - name: Create AVD snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: echo "Generated AVD snapshot for caching."
-
-      - name: Run instrumented test suite
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: ./gradlew :lib:core:connectedAndroidDeviceTest
+      - uses: ./.github/actions/run-android-instrumented-tests
 
   build-jvm:
     needs: validate-wrapper
@@ -130,20 +95,11 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: ./.github/actions/setup-jvm-and-test
         with:
-          distribution: ${{ matrix.java-distribution }}
-          java-version: "17"
-          architecture: ${{ matrix.java-arch }}
-
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-        if: contains(fromJSON('["ubuntu-24.04-arm", "windows-11-arm"]'), matrix.os)
-        with:
-          packages: ""
-
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-
-      - run: ./gradlew :lib:core:jvmTest :sample:desktopApp:jar
+          os: ${{ matrix.os }}
+          java-distribution: ${{ matrix.java-distribution }}
+          java-arch: ${{ matrix.java-arch }}
 
       - name: Check JVM API surface (host-independent, pinned to one leg)
         if: matrix.os == 'ubuntu-latest' && matrix.java-arch == 'x64'
@@ -196,11 +152,6 @@ jobs:
           submodules: recursive
 
       - uses: ./.github/actions/setup-android-toolchain
-
-      - name: Install a CMake newer than the NDK-pinned 3.22.1 for the iOS Xcode-generator build
-        run: |
-          brew install cmake
-          echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
 
       - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test :lib:core:klibApiCheck
 
@@ -263,11 +214,6 @@ jobs:
 
       - uses: ./.github/actions/setup-android-toolchain
 
-      - name: Install a CMake newer than the NDK-pinned 3.22.1 for the iOS Xcode-generator build
-        run: |
-          brew install cmake
-          echo "TIFFRENDERER_IOS_CMAKE=$(brew --prefix cmake)/bin/cmake" >> "$GITHUB_ENV"
-
       - name: Download Linux/Windows JVM natives built by the build-jvm matrix
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -293,7 +239,8 @@ jobs:
           verified=0
           for f in */*.dylib */*.so */*.dll; do
             [ -f "$f" ] || continue
-            gh attestation verify "$f" --repo "${{ github.repository }}"
+            gh attestation verify "$f" --repo "${{ github.repository }}" \
+                --signer-workflow "${{ github.repository }}/.github/workflows/ci.yml"
             verified=$((verified + 1))
           done
           if [ "$verified" -ne 6 ]; then
@@ -319,7 +266,7 @@ jobs:
     needs: [semantic-release, publish-central]
     if: >-
       always() && needs.semantic-release.outputs.new_release_published == 'true'
-      && needs.publish-central.result == 'failure'
+      && contains(fromJSON('["failure", "cancelled"]'), needs.publish-central.result)
       && needs.publish-central.outputs.publish_attempted != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -336,12 +283,12 @@ jobs:
     needs: [semantic-release, publish-central]
     if: >-
       always() && needs.semantic-release.outputs.new_release_published == 'true'
-      && needs.publish-central.result == 'failure'
+      && contains(fromJSON('["failure", "cancelled"]'), needs.publish-central.result)
       && needs.publish-central.outputs.publish_attempted == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Fail loudly without touching the tag or release
         run: |
-          echo "publish-central failed after the Maven Central upload step started. Central versions are immutable, so the tag/release are left in place: check the Central Portal deployment for v${{ needs.semantic-release.outputs.new_release_version }} by hand before deciding what to do." >&2
+          echo "publish-central ${{ needs.publish-central.result }} after the Maven Central upload step started. Central versions are immutable, so the tag/release are left in place: check the Central Portal deployment for v${{ needs.semantic-release.outputs.new_release_version }} by hand before deciding what to do." >&2
           exit 1

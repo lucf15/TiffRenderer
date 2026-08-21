@@ -19,58 +19,20 @@
 
 #include <cstdint>
 
+#include "jni_shared.h"
 #include "tiff_core.h"
 
 // Thin JNI shim: arg marshaling, AndroidBitmap pixel access, and translating TiffCoreStatus into
 // Java exceptions. All libtiff-facing logic lives in tiff_core.cpp/.h, which has no JNI or
-// Android dependency, so it's also bound directly from the iOS cinterop layer.
+// Android dependency, so it's also bound directly from the iOS cinterop layer. Scaffolding shared
+// with the JVM desktop shim lives in jni_shared.h/.cpp instead; only nativeOpen and
+// nativeRenderPage genuinely differ per platform.
 
 namespace tiffrenderer {
 
 namespace {
 
 constexpr size_t kErrBufSize = 512;
-
-TiffCoreDocument* asDocument(jlong documentPtr) {
-    return reinterpret_cast<TiffCoreDocument*>(static_cast<intptr_t>(documentPtr));
-}
-
-void throwException(JNIEnv* env, const char* className, const char* message) {
-    jclass clazz = env->FindClass(className);
-    if (clazz == nullptr) {
-        return;  // FindClass already threw NoClassDefFoundError.
-    }
-    env->ThrowNew(clazz, message);
-    env->DeleteLocalRef(clazz);
-}
-
-// documentPtr == 0 means a caller bypassed the Java wrapper (e.g. via reflection); throw instead
-// of segfaulting.
-bool requireDocument(JNIEnv* env, jlong documentPtr) {
-    if (documentPtr == 0) {
-        throwException(env, "java/lang/IllegalStateException", "TIFF document is not open");
-        return false;
-    }
-    return true;
-}
-
-void throwForStatus(JNIEnv* env, TiffCoreStatus status, const char* errBuf,
-        const char* fallbackMessage) {
-    const char* message = (errBuf != nullptr && errBuf[0] != '\0') ? errBuf : fallbackMessage;
-    switch (status) {
-        case TIFFCORE_ERROR_INVALID_ARG:
-            throwException(env, "java/lang/IllegalArgumentException", message);
-            break;
-        case TIFFCORE_ERROR_ILLEGAL_STATE:
-            throwException(env, "java/lang/IllegalStateException", message);
-            break;
-        case TIFFCORE_OK:
-        case TIFFCORE_ERROR_IO:
-        default:
-            throwException(env, "java/io/IOException", message);
-            break;
-    }
-}
 
 jlong nativeOpen(JNIEnv* env, jclass /*clazz*/, jint fd, jlong size) {
     TiffCoreDocument* doc = nullptr;
@@ -81,44 +43,6 @@ jlong nativeOpen(JNIEnv* env, jclass /*clazz*/, jint fd, jlong size) {
         return 0;
     }
     return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
-}
-
-void nativeClose(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
-    if (documentPtr == 0) {
-        return;
-    }
-    tiffcore_close(asDocument(documentPtr));
-}
-
-jint nativeGetPageCount(JNIEnv* env, jclass /*clazz*/, jlong documentPtr) {
-    if (!requireDocument(env, documentPtr)) {
-        return 0;
-    }
-    return static_cast<jint>(tiffcore_get_page_count(asDocument(documentPtr)));
-}
-
-void nativeOpenPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
-        jintArray outSize) {
-    if (!requireDocument(env, documentPtr)) {
-        return;
-    }
-    if (outSize == nullptr) {
-        throwException(env, "java/lang/IllegalArgumentException", "outSize cannot be null");
-        return;
-    }
-
-    uint32_t width = 0;
-    uint32_t height = 0;
-    char errBuf[kErrBufSize] = {};
-    const TiffCoreStatus status = tiffcore_open_page(asDocument(documentPtr), pageIndex, &width,
-            &height, errBuf, sizeof(errBuf));
-    if (status != TIFFCORE_OK) {
-        throwForStatus(env, status, errBuf, "cannot open TIFF page");
-        return;
-    }
-
-    const jint size[2] = {static_cast<jint>(width), static_cast<jint>(height)};
-    env->SetIntArrayRegion(outSize, 0, 2, size);
 }
 
 jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
@@ -178,31 +102,6 @@ jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint
     return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
 }
 
-// Decodes pageIndex now and caches it so subsequent nativeRenderPage calls reuse it; see
-// Page#retainRaster().
-jboolean nativeRetainRaster(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex) {
-    if (!requireDocument(env, documentPtr)) {
-        return JNI_FALSE;
-    }
-    char errBuf[kErrBufSize] = {};
-    const TiffCoreStatus status = tiffcore_retain_raster(asDocument(documentPtr), pageIndex,
-            errBuf, sizeof(errBuf));
-    if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
-        throwForStatus(env, status, errBuf, "failed to decode TIFF page");
-        return JNI_FALSE;
-    }
-    return status == TIFFCORE_OK_PARTIAL ? JNI_TRUE : JNI_FALSE;
-}
-
-// Frees whatever nativeRetainRaster cached; safe for Page#close() to call unconditionally.
-void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
-    // No-op on 0, same contract as nativeClose.
-    if (documentPtr == 0) {
-        return;
-    }
-    tiffcore_release_raster(asDocument(documentPtr));
-}
-
 // JNINativeMethod's name/signature fields are plain char* per the JNI spec (not const char*), so
 // every string literal below needs an explicit const_cast rather than an implicit (and, under
 // -Werror, rejected) literal-to-char* conversion.
@@ -210,14 +109,18 @@ void nativeReleaseRaster(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
 
 const JNINativeMethod gMethods[] = {
         {JNI_STR("nativeOpen"), JNI_STR("(IJ)J"), reinterpret_cast<void*>(nativeOpen)},
-        {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeClose)},
-        {JNI_STR("nativeGetPageCount"), JNI_STR("(J)I"), reinterpret_cast<void*>(nativeGetPageCount)},
-        {JNI_STR("nativeOpenPage"), JNI_STR("(JI[I)V"), reinterpret_cast<void*>(nativeOpenPage)},
+        {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(tiffrenderer::nativeClose)},
+        {JNI_STR("nativeGetPageCount"), JNI_STR("(J)I"),
+                reinterpret_cast<void*>(tiffrenderer::nativeGetPageCount)},
+        {JNI_STR("nativeOpenPage"), JNI_STR("(JI[I)V"),
+                reinterpret_cast<void*>(tiffrenderer::nativeOpenPage)},
         {JNI_STR("nativeRenderPage"),
                 JNI_STR("(JILandroid/graphics/Bitmap;IIII[FI)Z"),
                 reinterpret_cast<void*>(nativeRenderPage)},
-        {JNI_STR("nativeRetainRaster"), JNI_STR("(JI)Z"), reinterpret_cast<void*>(nativeRetainRaster)},
-        {JNI_STR("nativeReleaseRaster"), JNI_STR("(J)V"), reinterpret_cast<void*>(nativeReleaseRaster)},
+        {JNI_STR("nativeRetainRaster"), JNI_STR("(JI)Z"),
+                reinterpret_cast<void*>(tiffrenderer::nativeRetainRaster)},
+        {JNI_STR("nativeReleaseRaster"), JNI_STR("(J)V"),
+                reinterpret_cast<void*>(tiffrenderer::nativeReleaseRaster)},
 };
 
 #undef JNI_STR
