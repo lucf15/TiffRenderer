@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 DEPLOYMENT_TARGET="13.0"
 
-CMAKE_BIN="${TIFFRENDERER_IOS_CMAKE:-}"
+CMAKE_BIN="${TIFFRENDERER_SDK_CMAKE:-}"
 if [[ -z "$CMAKE_BIN" ]]; then
   for candidate in "$HOME"/Library/Android/sdk/cmake/*/bin/cmake; do
     [[ -x "$candidate" ]] || continue
@@ -25,7 +25,7 @@ if [[ -z "$CMAKE_BIN" || "$("$CMAKE_BIN" --version | head -1)" == *"3.22."* ]]; 
   echo "error: need a CMake newer than 3.22.x to configure the iOS build (3.22.1's Xcode-generator" >&2
   echo "compiler-ID probe fails to code-sign under recent Xcode). Install one, e.g.:" >&2
   echo "    android sdk install cmake/3.31.6" >&2
-  echo "or point TIFFRENDERER_IOS_CMAKE at an existing newer cmake binary." >&2
+  echo "or point TIFFRENDERER_SDK_CMAKE at an existing newer cmake binary." >&2
   exit 1
 fi
 echo "Using cmake: ${CMAKE_BIN} ($("$CMAKE_BIN" --version | head -1))"

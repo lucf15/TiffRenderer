@@ -2,12 +2,14 @@ package io.github.lucf15.tiffrenderer
 
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
 
 class TiffRendererMinificationTest {
 
     @Test
-    fun render_downscaledFineCheckerboard_blendsInsteadOfAliasing() {
-        TiffRenderer(Fixtures.open("checkerboard_fine.tif")).use { renderer ->
+    fun render_downscaledFineCheckerboard_blendsInsteadOfAliasing() = runTest {
+        TiffRenderer.open(Fixtures.open("checkerboard_fine.tif"), Dispatchers.Unconfined).use { renderer ->
             val page = renderer.openPage(0)
 
             val bitmap = createTiffBitmap(29, 29)

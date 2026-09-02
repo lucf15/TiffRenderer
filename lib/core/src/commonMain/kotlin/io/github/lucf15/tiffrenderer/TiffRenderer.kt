@@ -1,42 +1,51 @@
 package io.github.lucf15.tiffrenderer
 
-/** Decodes and rasterizes TIFF documents page by page; mirrors Android's `PdfRenderer` (same
- * method names, lifecycle, and page/render-mode pattern). Concurrent [TiffPage.render] calls
- * through the same page are memory-safe; the lifecycle (`openPage`/`close`) is not. */
-public class TiffRenderer(source: TiffSource) : AutoCloseable {
-    private var handle: TiffCoreHandle? = null
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-    // -1 means "not yet resolved"; see the pageCount KDoc below for why.
+/** Decodes and rasterizes TIFF documents page by page; mirrors Android's `PdfRenderer` (same
+ * method names, lifecycle, and page/render-mode pattern), except fully `suspend`-based: wasmJs
+ * genuinely needs every call to suspend so it can offload decoding to a Web Worker instead of
+ * blocking the browser's single UI thread (there's no real background-thread dispatcher there the
+ * way there is on every other platform). On every other platform, every call is already safe to
+ * make from `Dispatchers.Main`/`viewModelScope` without the caller adding their own
+ * `withContext`: internally it dispatches to [dispatcher] (default [Dispatchers.Default], the
+ * right choice for this CPU-bound decode work, not [Dispatchers.IO]), which [open] also accepts
+ * as a parameter rather than hardcoding, so a test can substitute its own. Concurrent
+ * [TiffPage.render] calls through the same page are memory-safe; the lifecycle (`openPage`/
+ * `close`) is not. Not [AutoCloseable] since that interface has no `suspend close()`; use
+ * [TiffRenderer.use] instead of `.use {}`. */
+public class TiffRenderer private constructor(
+    private var handle: TiffCoreHandle?,
+    private var openSource: TiffSource?,
+    private val dispatcher: CoroutineDispatcher,
+) {
+    // Guards pageOpen/currentPage across openPage()/close()/TiffPage.close() so two concurrent
+    // openPage() calls can't both pass the check before either flips pageOpen. Internal, not
+    // private: TiffPage.close() takes it too, to serialize against its owning renderer.
+    internal val stateMutex = Mutex()
+
+    // -1 means "not yet resolved"; see pageCount's KDoc below for why.
     private var _pageCount: Int = -1
-    private var openSource: TiffSource? = source
     private var currentPage: TiffPage? = null
     private var closed = false
     private var pageOpen = false
 
     /** Number of pages in this document. Unlike PDF's `/Count`, TIFF has no page-count field: this
      * walks the whole IFD chain, so it's resolved lazily on first access and cached. */
-    public val pageCount: Int
-        get() {
-            check(!closed) { "Already closed" }
-            if (_pageCount < 0) {
-                _pageCount = TiffCoreBinding.getPageCount(checkNotNull(handle))
-            }
-            return _pageCount
+    public suspend fun pageCount(): Int {
+        check(!closed) { "Already closed" }
+        if (_pageCount < 0) {
+            _pageCount = TiffCoreBinding.getPageCount(checkNotNull(handle), dispatcher)
         }
-
-    init {
-        check(source.markConsumed()) { "TiffSource has already been used to open a TiffRenderer" }
-        try {
-            handle = TiffCoreBinding.open(source)
-        } catch (t: Throwable) {
-            doClose()
-            throw t
-        }
+        return _pageCount
     }
 
     /** Opens [index] for rendering; see [TiffPage]. Only walks the full directory chain (via
      * [pageCount]) on a native seek failure, not on the happy path. */
-    public fun openPage(index: Int): TiffPage {
+    public suspend fun openPage(index: Int): TiffPage = stateMutex.withLock {
         check(!closed) { "Already closed" }
         check(!pageOpen) { "Current page not closed" }
         require(index >= 0) { "Invalid page index $index: must be non-negative" }
@@ -46,20 +55,20 @@ public class TiffRenderer(source: TiffSource) : AutoCloseable {
         }
 
         val size = try {
-            TiffCoreBinding.openPage(h, index)
+            TiffCoreBinding.openPage(h, index, dispatcher)
         } catch (e: TiffIOException) {
             // Disambiguate a bad index (IllegalArgumentException) from a corrupt in-range page.
-            val resolvedPageCount = pageCount
+            val resolvedPageCount = pageCount()
             require(index < resolvedPageCount) { "Invalid page index $index for $resolvedPageCount pages" }
             throw e
         }
-        val page = TiffPage(this, h, index, size.width, size.height)
+        val page = TiffPage(this, h, index, size.width, size.height, dispatcher)
         currentPage = page
         pageOpen = true
-        return page
+        page
     }
 
-    override fun close() {
+    public suspend fun close(): Unit = stateMutex.withLock {
         check(!closed) { "Already closed" }
         check(!pageOpen) { "Current page not closed" }
         doClose()
@@ -70,16 +79,32 @@ public class TiffRenderer(source: TiffSource) : AutoCloseable {
         pageOpen = false
     }
 
-    private fun doClose() {
-        currentPage?.let {
-            it.closeInternal()
-            currentPage = null
+    private suspend fun doClose() {
+        try {
+            currentPage?.let {
+                it.closeInternal()
+                currentPage = null
+            }
+            handle?.let { TiffCoreBinding.close(it, dispatcher) }
+        } finally {
+            handle = null
+            openSource?.release()
+            openSource = null
+            closed = true
         }
-        handle?.let { TiffCoreBinding.close(it) }
-        handle = null
-        openSource?.release()
-        openSource = null
-        closed = true
+    }
+
+    public companion object {
+        public suspend fun open(source: TiffSource, dispatcher: CoroutineDispatcher = defaultTiffDispatcher): TiffRenderer {
+            check(source.markConsumed()) { "TiffSource has already been used to open a TiffRenderer" }
+            val handle = try {
+                TiffCoreBinding.open(source, dispatcher)
+            } catch (t: Throwable) {
+                source.release()
+                throw t
+            }
+            return TiffRenderer(handle, source, dispatcher)
+        }
     }
 }
 
@@ -90,16 +115,17 @@ public class TiffPage internal constructor(
     public val index: Int,
     public val width: Int,
     public val height: Int,
-) : AutoCloseable {
+    private val dispatcher: CoroutineDispatcher,
+) {
     private var rasterRetained = false
     private var closed = false
 
     /** Opts this page into caching its decoded raster so repeated [render] calls reuse it instead
      * of redecoding; released on [close]. [onPartialDecode] fires if libtiff tolerated a decode
      * error in part of the page (e.g. one bad strip); the decode still succeeds either way. */
-    public fun retainRaster(onPartialDecode: (() -> Unit)? = null) {
+    public suspend fun retainRaster(onPartialDecode: (() -> Unit)? = null) {
         check(!closed) { "Already closed" }
-        val partial = TiffCoreBinding.retainRaster(handle, index)
+        val partial = TiffCoreBinding.retainRaster(handle, index, dispatcher)
         rasterRetained = true
         if (partial) {
             onPartialDecode?.invoke()
@@ -109,7 +135,7 @@ public class TiffPage internal constructor(
     /** Renders this page into [destination]. [destClip] restricts rendering to that rect (default:
      * full destination); [transform] maps page to destination pixels (default: fit-to-clip).
      * Pixels outside the source page are left untouched. [onPartialDecode]: see [retainRaster]. */
-    public fun render(
+    public suspend fun render(
         destination: TiffBitmap,
         destClip: TiffRect? = null,
         transform: TiffTransform? = null,
@@ -123,20 +149,21 @@ public class TiffPage internal constructor(
 
         val clip = destClip ?: TiffRect(0, 0, destination.width, destination.height)
         val effectiveTransform = transform ?: defaultFitToClipTransform(width, height, clip)
-        val partial = TiffCoreBinding.render(handle, index, destination, clip, effectiveTransform, renderMode)
+        val partial =
+            TiffCoreBinding.render(handle, index, destination, clip, effectiveTransform, renderMode, dispatcher)
         if (partial) {
             onPartialDecode?.invoke()
         }
     }
 
-    override fun close() {
+    public suspend fun close(): Unit = owner.stateMutex.withLock {
         check(!closed) { "Already closed" }
         closeInternal()
     }
 
-    internal fun closeInternal() {
+    internal suspend fun closeInternal() {
         if (rasterRetained) {
-            TiffCoreBinding.releaseRaster(handle)
+            TiffCoreBinding.releaseRaster(handle, dispatcher)
             rasterRetained = false
         }
         closed = true

@@ -1,5 +1,6 @@
 // Klib ABI Dump
-// Targets: [iosArm64, iosSimulatorArm64]
+// Targets: [iosArm64, iosSimulatorArm64, wasmJs]
+// Alias: ios => [iosArm64, iosSimulatorArm64]
 // Rendering settings:
 // - Signature version: 2
 // - Show manifest properties: true
@@ -30,7 +31,7 @@ final class io.github.lucf15.tiffrenderer/TiffIOException : kotlin/RuntimeExcept
     constructor <init>(kotlin/String) // io.github.lucf15.tiffrenderer/TiffIOException.<init>|<init>(kotlin.String){}[0]
 }
 
-final class io.github.lucf15.tiffrenderer/TiffPage : kotlin/AutoCloseable { // io.github.lucf15.tiffrenderer/TiffPage|null[0]
+final class io.github.lucf15.tiffrenderer/TiffPage { // io.github.lucf15.tiffrenderer/TiffPage|null[0]
     final val height // io.github.lucf15.tiffrenderer/TiffPage.height|{}height[0]
         final fun <get-height>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPage.height.<get-height>|<get-height>(){}[0]
     final val index // io.github.lucf15.tiffrenderer/TiffPage.index|{}index[0]
@@ -38,9 +39,9 @@ final class io.github.lucf15.tiffrenderer/TiffPage : kotlin/AutoCloseable { // i
     final val width // io.github.lucf15.tiffrenderer/TiffPage.width|{}width[0]
         final fun <get-width>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPage.width.<get-width>|<get-width>(){}[0]
 
-    final fun close() // io.github.lucf15.tiffrenderer/TiffPage.close|close(){}[0]
-    final fun render(io.github.lucf15.tiffrenderer/TiffBitmap, io.github.lucf15.tiffrenderer/TiffRect? = ..., io.github.lucf15.tiffrenderer/TiffTransform? = ..., io.github.lucf15.tiffrenderer/TiffRenderMode = ..., kotlin/Function0<kotlin/Unit>? = ...) // io.github.lucf15.tiffrenderer/TiffPage.render|render(io.github.lucf15.tiffrenderer.TiffBitmap;io.github.lucf15.tiffrenderer.TiffRect?;io.github.lucf15.tiffrenderer.TiffTransform?;io.github.lucf15.tiffrenderer.TiffRenderMode;kotlin.Function0<kotlin.Unit>?){}[0]
-    final fun retainRaster(kotlin/Function0<kotlin/Unit>? = ...) // io.github.lucf15.tiffrenderer/TiffPage.retainRaster|retainRaster(kotlin.Function0<kotlin.Unit>?){}[0]
+    final suspend fun close() // io.github.lucf15.tiffrenderer/TiffPage.close|close(){}[0]
+    final suspend fun render(io.github.lucf15.tiffrenderer/TiffBitmap, io.github.lucf15.tiffrenderer/TiffRect? = ..., io.github.lucf15.tiffrenderer/TiffTransform? = ..., io.github.lucf15.tiffrenderer/TiffRenderMode = ..., kotlin/Function0<kotlin/Unit>? = ...) // io.github.lucf15.tiffrenderer/TiffPage.render|render(io.github.lucf15.tiffrenderer.TiffBitmap;io.github.lucf15.tiffrenderer.TiffRect?;io.github.lucf15.tiffrenderer.TiffTransform?;io.github.lucf15.tiffrenderer.TiffRenderMode;kotlin.Function0<kotlin.Unit>?){}[0]
+    final suspend fun retainRaster(kotlin/Function0<kotlin/Unit>? = ...) // io.github.lucf15.tiffrenderer/TiffPage.retainRaster|retainRaster(kotlin.Function0<kotlin.Unit>?){}[0]
 }
 
 final class io.github.lucf15.tiffrenderer/TiffRect { // io.github.lucf15.tiffrenderer/TiffRect|null[0]
@@ -60,21 +61,25 @@ final class io.github.lucf15.tiffrenderer/TiffRect { // io.github.lucf15.tiffren
         final fun <get-width>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffRect.width.<get-width>|<get-width>(){}[0]
 }
 
-final class io.github.lucf15.tiffrenderer/TiffRenderer : kotlin/AutoCloseable { // io.github.lucf15.tiffrenderer/TiffRenderer|null[0]
-    constructor <init>(io.github.lucf15.tiffrenderer/TiffSource) // io.github.lucf15.tiffrenderer/TiffRenderer.<init>|<init>(io.github.lucf15.tiffrenderer.TiffSource){}[0]
+final class io.github.lucf15.tiffrenderer/TiffRenderer { // io.github.lucf15.tiffrenderer/TiffRenderer|null[0]
+    final suspend fun close() // io.github.lucf15.tiffrenderer/TiffRenderer.close|close(){}[0]
+    final suspend fun openPage(kotlin/Int): io.github.lucf15.tiffrenderer/TiffPage // io.github.lucf15.tiffrenderer/TiffRenderer.openPage|openPage(kotlin.Int){}[0]
+    final suspend fun pageCount(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffRenderer.pageCount|pageCount(){}[0]
 
-    final val pageCount // io.github.lucf15.tiffrenderer/TiffRenderer.pageCount|{}pageCount[0]
-        final fun <get-pageCount>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffRenderer.pageCount.<get-pageCount>|<get-pageCount>(){}[0]
-
-    final fun close() // io.github.lucf15.tiffrenderer/TiffRenderer.close|close(){}[0]
-    final fun openPage(kotlin/Int): io.github.lucf15.tiffrenderer/TiffPage // io.github.lucf15.tiffrenderer/TiffRenderer.openPage|openPage(kotlin.Int){}[0]
+    final object Companion { // io.github.lucf15.tiffrenderer/TiffRenderer.Companion|null[0]
+        final suspend fun open(io.github.lucf15.tiffrenderer/TiffSource, kotlinx.coroutines/CoroutineDispatcher = ...): io.github.lucf15.tiffrenderer/TiffRenderer // io.github.lucf15.tiffrenderer/TiffRenderer.Companion.open|open(io.github.lucf15.tiffrenderer.TiffSource;kotlinx.coroutines.CoroutineDispatcher){}[0]
+    }
 }
 
 final class io.github.lucf15.tiffrenderer/TiffSource { // io.github.lucf15.tiffrenderer/TiffSource|null[0]
     final fun release() // io.github.lucf15.tiffrenderer/TiffSource.release|release(){}[0]
 
     final object Companion { // io.github.lucf15.tiffrenderer/TiffSource.Companion|null[0]
+        // Targets: [ios]
         final fun fromFileDescriptor(kotlin/Int, kotlin/Long): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromFileDescriptor|fromFileDescriptor(kotlin.Int;kotlin.Long){}[0]
+
+        // Targets: [wasmJs]
+        final fun fromByteArray(kotlin/ByteArray): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromByteArray|fromByteArray(kotlin.ByteArray){}[0]
     }
 }
 
@@ -85,5 +90,10 @@ final class io.github.lucf15.tiffrenderer/TiffTransform { // io.github.lucf15.ti
         final fun <get-values>(): kotlin/FloatArray // io.github.lucf15.tiffrenderer/TiffTransform.values.<get-values>|<get-values>(){}[0]
 }
 
-final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/toIntArray(): kotlin/IntArray // io.github.lucf15.tiffrenderer/toIntArray|toIntArray@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]
+final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/toByteArray(): kotlin/ByteArray // io.github.lucf15.tiffrenderer/toByteArray|toByteArray@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]
 final fun io.github.lucf15.tiffrenderer/createTiffBitmap(kotlin/Int, kotlin/Int): io.github.lucf15.tiffrenderer/TiffBitmap // io.github.lucf15.tiffrenderer/createTiffBitmap|createTiffBitmap(kotlin.Int;kotlin.Int){}[0]
+final suspend inline fun <#A: kotlin/Any?> (io.github.lucf15.tiffrenderer/TiffPage).io.github.lucf15.tiffrenderer/use(kotlin.coroutines/SuspendFunction1<io.github.lucf15.tiffrenderer/TiffPage, #A>): #A // io.github.lucf15.tiffrenderer/use|use@io.github.lucf15.tiffrenderer.TiffPage(kotlin.coroutines.SuspendFunction1<io.github.lucf15.tiffrenderer.TiffPage,0:0>){0§<kotlin.Any?>}[0]
+final suspend inline fun <#A: kotlin/Any?> (io.github.lucf15.tiffrenderer/TiffRenderer).io.github.lucf15.tiffrenderer/use(kotlin.coroutines/SuspendFunction1<io.github.lucf15.tiffrenderer/TiffRenderer, #A>): #A // io.github.lucf15.tiffrenderer/use|use@io.github.lucf15.tiffrenderer.TiffRenderer(kotlin.coroutines.SuspendFunction1<io.github.lucf15.tiffrenderer.TiffRenderer,0:0>){0§<kotlin.Any?>}[0]
+
+// Targets: [ios]
+final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/toIntArray(): kotlin/IntArray // io.github.lucf15.tiffrenderer/toIntArray|toIntArray@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]

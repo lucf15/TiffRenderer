@@ -5,20 +5,19 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import java.io.IOException
-import java.util.concurrent.atomic.AtomicBoolean
 
 public actual class TiffSource private constructor(
     internal val pfd: ParcelFileDescriptor,
     internal val size: Long,
 ) {
     internal val fd: Int get() = pfd.fd
-    private val consumedFlag = AtomicBoolean(false)
-    private val releasedFlag = AtomicBoolean(false)
+    private val consumedFlag = OnceFlag()
+    private val releasedFlag = OnceFlag()
 
-    internal actual fun markConsumed(): Boolean = consumedFlag.compareAndSet(false, true)
+    internal actual fun markConsumed(): Boolean = consumedFlag.trySet()
 
     public actual fun release() {
-        if (!releasedFlag.compareAndSet(false, true)) return
+        if (!releasedFlag.trySet()) return
         try {
             pfd.close()
         } catch (ignored: IOException) {
@@ -39,6 +38,10 @@ public actual class TiffSource private constructor(
                 Os.lseek(pfd.fileDescriptor, 0, OsConstants.SEEK_SET)
                 Os.fstat(pfd.fileDescriptor).st_size
             } catch (e: ErrnoException) {
+                try {
+                    pfd.close()
+                } catch (ignored: IOException) {
+                }
                 throw IllegalArgumentException("file descriptor not seekable", e)
             }
             return TiffSource(pfd, size)

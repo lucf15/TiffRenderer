@@ -5,14 +5,15 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlinx.coroutines.test.runTest
 
 class TiffSourceByteArrayTest {
     @Test
-    fun fromByteArray_rendersRealFixtureWithoutTouchingDisk() {
+    fun fromByteArray_rendersRealFixtureWithoutTouchingDisk() = runTest {
         val bytes = Resource("single_page_rgb.tif").readBytes()
 
-        TiffRenderer(TiffSource.fromByteArray(bytes)).use { renderer ->
-            assertEquals(1, renderer.pageCount)
+        TiffRenderer.open(TiffSource.fromByteArray(bytes)).use { renderer ->
+            assertEquals(1, renderer.pageCount())
             val page = renderer.openPage(0)
 
             val bitmap = createTiffBitmap(page.width, page.height)
@@ -24,16 +25,16 @@ class TiffSourceByteArrayTest {
     }
 
     @Test
-    fun fromByteArray_garbageBytes_throwsTiffIOException() {
+    fun fromByteArray_garbageBytes_throwsTiffIOException() = runTest {
         val bytes = Resource("not_a_tiff.bin").readBytes()
-        assertFailsWith<TiffIOException> { TiffRenderer(TiffSource.fromByteArray(bytes)) }
+        assertFailsWith<TiffIOException> { TiffRenderer.open(TiffSource.fromByteArray(bytes)) }
     }
 
     @Test
-    fun fromByteArray_clearsRetainedReferenceAfterOpen() {
+    fun fromByteArray_clearsRetainedReferenceAfterOpen() = runTest {
         val bytes = Resource("single_page_rgb.tif").readBytes()
         val source = TiffSource.fromByteArray(bytes)
-        TiffRenderer(source).use { }
+        TiffRenderer.open(source).use { }
         assertNull(source.bytes)
     }
 }

@@ -37,16 +37,7 @@ public actual class TiffBitmap private constructor(
  * holding onto it. Prefer [toByteArray] when raw RGBA8888 bytes suffice; this repacks per pixel. */
 public fun TiffBitmap.toIntArray(): IntArray {
     val bytes = toByteArray()
-    val result = IntArray(width * height)
-    for (i in result.indices) {
-        val offset = i * 4
-        val r = bytes[offset].toInt() and 0xFF
-        val g = bytes[offset + 1].toInt() and 0xFF
-        val b = bytes[offset + 2].toInt() and 0xFF
-        val a = bytes[offset + 3].toInt() and 0xFF
-        result[i] = r or (g shl 8) or (b shl 16) or (a shl 24)
-    }
-    return result
+    return IntArray(width * height) { i -> packArgbFromRgbaBytes(i * 4) { bytes[it] } }
 }
 
 /** Escape hatch for UI-layer code (e.g. `:sample:shared`) that wants the raw RGBA8888 bytes,
@@ -61,11 +52,5 @@ public fun TiffBitmap.toByteArray(): ByteArray {
 
 public actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
 
-internal actual fun TiffBitmap.pixelAt(x: Int, y: Int): Int {
-    val offset = (y * width + x) * 4
-    val r = buffer.get(offset).toInt() and 0xFF
-    val g = buffer.get(offset + 1).toInt() and 0xFF
-    val b = buffer.get(offset + 2).toInt() and 0xFF
-    val a = buffer.get(offset + 3).toInt() and 0xFF
-    return (a shl 24) or (r shl 16) or (g shl 8) or b
-}
+internal actual fun TiffBitmap.pixelAt(x: Int, y: Int): Int =
+    packArgbFromRgbaBytes((y * width + x) * 4) { buffer.get(it) }

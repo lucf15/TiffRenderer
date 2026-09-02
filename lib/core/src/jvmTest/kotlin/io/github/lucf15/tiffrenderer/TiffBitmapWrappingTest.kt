@@ -4,12 +4,13 @@ import java.nio.ByteBuffer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlinx.coroutines.test.runTest
 
 class TiffBitmapWrappingTest {
 
     @Test
-    fun wrapping_reusedAcrossRepeatedRenders_producesCorrectPixelsEachTime() {
-        TiffRenderer(Fixtures.open("single_page_rgb.tif")).use { renderer ->
+    fun wrapping_reusedAcrossRepeatedRenders_producesCorrectPixelsEachTime() = runTest {
+        TiffRenderer.open(Fixtures.open("single_page_rgb.tif")).use { renderer ->
             val buffer = ByteBuffer.allocateDirect(32 * 24 * 4)
             repeat(5) {
                 renderer.openPage(0).use { page ->
@@ -22,26 +23,26 @@ class TiffBitmapWrappingTest {
     }
 
     @Test
-    fun wrapping_bufferTooSmall_throwsIllegalArgumentException() {
+    fun wrapping_bufferTooSmall_throwsIllegalArgumentException() = runTest {
         val buffer = ByteBuffer.allocateDirect(10 * 10 * 4)
         assertFailsWith<IllegalArgumentException> { TiffBitmap.wrapping(buffer, 20, 20) }
     }
 
     @Test
-    fun wrapping_nonDirectBuffer_throwsIllegalArgumentException() {
+    fun wrapping_nonDirectBuffer_throwsIllegalArgumentException() = runTest {
         val buffer = ByteBuffer.allocate(10 * 10 * 4)
         assertFailsWith<IllegalArgumentException> { TiffBitmap.wrapping(buffer, 10, 10) }
     }
 
     @Test
-    fun wrapping_readOnlyBuffer_throwsIllegalArgumentException() {
+    fun wrapping_readOnlyBuffer_throwsIllegalArgumentException() = runTest {
         val buffer = ByteBuffer.allocateDirect(10 * 10 * 4).asReadOnlyBuffer()
         assertFailsWith<IllegalArgumentException> { TiffBitmap.wrapping(buffer, 10, 10) }
     }
 
     @Test
-    fun wrapping_largerArenaBuffer_toByteArrayReturnsExactImageSizeNotArenaSize() {
-        TiffRenderer(Fixtures.open("single_page_rgb.tif")).use { renderer ->
+    fun wrapping_largerArenaBuffer_toByteArrayReturnsExactImageSizeNotArenaSize() = runTest {
+        TiffRenderer.open(Fixtures.open("single_page_rgb.tif")).use { renderer ->
             val imageBytes = 32 * 24 * 4
             val arena = ByteBuffer.allocateDirect(imageBytes * 3)
             renderer.openPage(0).use { page ->
@@ -53,8 +54,8 @@ class TiffBitmapWrappingTest {
     }
 
     @Test
-    fun wrapping_positionedArenaBuffer_rendersAtThatOffsetNotArenaStart() {
-        TiffRenderer(Fixtures.open("single_page_rgb.tif")).use { renderer ->
+    fun wrapping_positionedArenaBuffer_rendersAtThatOffsetNotArenaStart() = runTest {
+        TiffRenderer.open(Fixtures.open("single_page_rgb.tif")).use { renderer ->
             val imageBytes = 32 * 24 * 4
             val arena = ByteBuffer.allocateDirect(imageBytes * 2)
             val sentinel: Byte = 0x11
@@ -77,8 +78,8 @@ class TiffBitmapWrappingTest {
     }
 
     @Test
-    fun wrapping_bufferWithLimitLessThanCapacity_confinesRenderToLimitNotCapacity() {
-        TiffRenderer(Fixtures.open("single_page_rgb.tif")).use { renderer ->
+    fun wrapping_bufferWithLimitLessThanCapacity_confinesRenderToLimitNotCapacity() = runTest {
+        TiffRenderer.open(Fixtures.open("single_page_rgb.tif")).use { renderer ->
             val imageBytes = 32 * 24 * 4
             val arena = ByteBuffer.allocateDirect(imageBytes * 2)
             val sentinel: Byte = 0x22

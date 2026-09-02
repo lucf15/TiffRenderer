@@ -1,3 +1,5 @@
+@file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+
 plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.multiplatform)
@@ -25,6 +27,10 @@ kotlin {
     }
 
     jvm()
+
+    wasmJs {
+        browser()
+    }
 
     sourceSets {
         androidMain.dependencies {

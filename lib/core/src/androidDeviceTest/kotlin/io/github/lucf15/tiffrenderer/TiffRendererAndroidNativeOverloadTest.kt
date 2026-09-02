@@ -5,12 +5,16 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.os.ParcelFileDescriptor
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /** The Android-native convenience overloads (`Bitmap`/`Matrix`/`Rect` directly); everything shared
- * with JVM/iOS lives in `integrationTest` instead. */
+ * with JVM/iOS lives in `integrationTest` instead. JUnit4 has no built-in suspend test support, so
+ * bodies that call suspend API run inside [runBlocking]; suspend-call assertions use kotlin.test's
+ * (inline, suspend-safe) `assertFailsWith` instead of JUnit's `assertThrows`. */
 class TiffRendererAndroidNativeOverloadTest {
 
     companion object {
@@ -19,8 +23,8 @@ class TiffRendererAndroidNativeOverloadTest {
         private val PAGE_COLOR = Color.rgb(128, 64, 200)
     }
 
-    private fun openSinglePage() =
-        TiffRenderer(TiffSource.fromParcelFileDescriptor(openFixturePfd("single_page_rgb.tif")))
+    private suspend fun openSinglePage() =
+        TiffRenderer.open(TiffSource.fromParcelFileDescriptor(openFixturePfd("single_page_rgb.tif")))
 
     @Test
     fun tiffBitmap_wrongBitmapConfig_throwsIllegalArgumentException() {
@@ -36,14 +40,14 @@ class TiffRendererAndroidNativeOverloadTest {
     }
 
     @Test
-    fun render_bitmapRecycledAfterWrapping_throwsIllegalArgumentException() {
+    fun render_bitmapRecycledAfterWrapping_throwsIllegalArgumentException(): Unit = runBlocking {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
             val tiffBitmap = TiffBitmap(bitmap)
             bitmap.recycle()
             try {
-                assertThrows(IllegalArgumentException::class.java) { page.render(tiffBitmap) }
+                assertFailsWith<IllegalArgumentException> { page.render(tiffBitmap) }
             } finally {
                 page.close()
             }
@@ -73,7 +77,7 @@ class TiffRendererAndroidNativeOverloadTest {
     }
 
     @Test
-    fun render_androidNativeOverload_matchesCommonTypesResult() {
+    fun render_androidNativeOverload_matchesCommonTypesResult() = runBlocking {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = Bitmap.createBitmap(50, 40, Bitmap.Config.ARGB_8888)
@@ -91,7 +95,7 @@ class TiffRendererAndroidNativeOverloadTest {
     }
 
     @Test
-    fun render_androidNativeOverload_destClipMatchesTiffRectResult() {
+    fun render_androidNativeOverload_destClipMatchesTiffRectResult() = runBlocking {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888)
@@ -115,9 +119,9 @@ class TiffRendererAndroidNativeOverloadTest {
     }
 
     @Test
-    fun tiffRenderer_androidNativeOverload_opensPfdDirectly() {
+    fun tiffRenderer_androidNativeOverload_opensPfdDirectly() = runBlocking {
         TiffRenderer(openFixturePfd("single_page_rgb.tif")).use { renderer ->
-            assertEquals(1, renderer.pageCount)
+            assertEquals(1, renderer.pageCount())
         }
     }
 }

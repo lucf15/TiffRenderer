@@ -152,6 +152,12 @@ add_library(WebP::webp ALIAS webp)
 set(WebP_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libwebp/src" CACHE PATH "" FORCE)
 set(WebP_LIBRARY "unused-webp-alias-placeholder" CACHE FILEPATH "" FORCE)
 
+if(EMSCRIPTEN)
+    # TestBigEndian can't run a test binary under cross-compilation; wasm32 is little-endian.
+    set(WORDS_BIGENDIAN 0 CACHE INTERNAL "")
+    set(HAVE_BIGENDIAN 0 CACHE INTERNAL "" FORCE)
+endif()
+
 add_subdirectory(third_party/libtiff EXCLUDE_FROM_ALL)
 
 # --- Platform-neutral core (no JNI, no Android deps); also the iOS cinterop build's link
@@ -196,7 +202,7 @@ if(ANDROID)
 endif()
 
 # --- JNI wrapper (desktop JVM only): raw jintArray pixels, jni.h from the JDK via find_package(JNI) ---
-if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT EMSCRIPTEN)
     find_package(JNI REQUIRED)
 
     add_library(tiffrenderer_jni_jvm SHARED
@@ -219,6 +225,22 @@ if(NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
             "-Wl,-z,relro" "-Wl,-z,now"
         )
     endif()
+endif()
+
+# --- WebAssembly ES module (wasmJs only): tiffcore_* exported directly, no JNI ------------------
+if(EMSCRIPTEN)
+    add_executable(tiffcore_module wasm_empty_main.c)
+    target_link_libraries(tiffcore_module PRIVATE tiffrenderer_core)
+    target_link_options(tiffcore_module PRIVATE
+        -sMODULARIZE=1
+        -sEXPORT_ES6=1
+        -sEXPORT_NAME=createTiffCoreModule
+        -sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPU32,HEAPF32,UTF8ToString
+        -sEXPORTED_FUNCTIONS=_malloc,_free,_tiffcore_global_init,_tiffcore_open_memory,_tiffcore_close,_tiffcore_get_page_count,_tiffcore_open_page,_tiffcore_render_page,_tiffcore_retain_raster,_tiffcore_release_raster
+        -sALLOW_MEMORY_GROWTH=1
+        -sENVIRONMENT=web
+    )
+    set_target_properties(tiffcore_module PROPERTIES SUFFIX ".mjs")
 endif()
 
 # --- libFuzzer harness (no JNI, no Android/iOS deps; Clang only) --------------------------------

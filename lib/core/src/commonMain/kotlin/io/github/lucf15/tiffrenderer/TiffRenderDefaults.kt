@@ -1,5 +1,12 @@
 package io.github.lucf15.tiffrenderer
 
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+
+/** [TiffRenderer.open]'s default, and every platform convenience overload's (e.g. Android's
+ * `TiffRenderer(pfd)`) own default: one place so they can't drift out of sync with each other. */
+internal val defaultTiffDispatcher: CoroutineDispatcher = Dispatchers.Default
+
 /** Fit-to-clip default transform: maps the full page onto exactly [clip]. */
 internal fun defaultFitToClipTransform(pageWidth: Int, pageHeight: Int, clip: TiffRect): TiffTransform =
     TiffTransform(
