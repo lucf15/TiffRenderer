@@ -3,6 +3,8 @@ package io.github.lucf15.tiffrenderer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
 
 class TiffRendererRenderTest {
 
@@ -12,10 +14,10 @@ class TiffRendererRenderTest {
         private val PAGE_COLOR = argb(255, 128, 64, 200)
     }
 
-    private fun openSinglePage() = TiffRenderer(Fixtures.open("single_page_rgb.tif"))
+    private suspend fun openSinglePage() = TiffRenderer.open(Fixtures.open("single_page_rgb.tif"), Dispatchers.Unconfined)
 
     @Test
-    fun render_destClipExceedsBitmapBounds_throwsIllegalArgumentException() {
+    fun render_destClipExceedsBitmapBounds_throwsIllegalArgumentException() = runTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(10, 10)
@@ -28,7 +30,7 @@ class TiffRendererRenderTest {
     }
 
     @Test
-    fun render_afterPageClosed_throwsIllegalStateException() {
+    fun render_afterPageClosed_throwsIllegalStateException() = runTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             page.close()
@@ -40,7 +42,7 @@ class TiffRendererRenderTest {
     }
 
     @Test
-    fun render_defaultTransform_fillsBitmapWithExactPageColor() {
+    fun render_defaultTransform_fillsBitmapWithExactPageColor() = runTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
@@ -54,7 +56,7 @@ class TiffRendererRenderTest {
     }
 
     @Test
-    fun render_nearestVsBilinearRenderMode_bothExactForFlatColor() {
+    fun render_nearestVsBilinearRenderMode_bothExactForFlatColor() = runTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
@@ -67,7 +69,7 @@ class TiffRendererRenderTest {
     }
 
     @Test
-    fun render_withDestClip_leavesOutsideClipUntouched() {
+    fun render_withDestClip_leavesOutsideClipUntouched() = runTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(64, 48)
@@ -86,7 +88,7 @@ class TiffRendererRenderTest {
     }
 
     @Test
-    fun render_nonInvertibleTransform_throwsIllegalArgumentException() {
+    fun render_nonInvertibleTransform_throwsIllegalArgumentException() = runTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
@@ -99,12 +101,12 @@ class TiffRendererRenderTest {
     }
 
     @Test
-    fun render_identityScaleAtSourceBoundary_samplesPureUnblendedColor() {
+    fun render_identityScaleAtSourceBoundary_samplesPureUnblendedColor() = runTest {
         // At identity scale (no mip pyramid involved), sampleBilinear's own x1/y1 clamp is what
         // keeps the last row/column's neighbor lookup in bounds; checkerboard_fine.tif has real
         // content variation at (249,249) (unlike the flat-color fixtures elsewhere in this file),
         // so a broken clamp would show up as a blended/garbage color instead of the pure cell color.
-        TiffRenderer(Fixtures.open("checkerboard_fine.tif")).use { renderer ->
+        TiffRenderer.open(Fixtures.open("checkerboard_fine.tif"), Dispatchers.Unconfined).use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(250, 250)
             page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
@@ -115,7 +117,7 @@ class TiffRendererRenderTest {
     }
 
     @Test
-    fun render_withCustomTranslateTransform_offsetsContentAsSpecified() {
+    fun render_withCustomTranslateTransform_offsetsContentAsSpecified() = runTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(50, 40)

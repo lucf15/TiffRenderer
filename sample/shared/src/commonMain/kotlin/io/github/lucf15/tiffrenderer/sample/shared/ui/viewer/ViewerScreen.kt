@@ -26,12 +26,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +49,9 @@ import io.github.lucf15.tiffrenderer.TiffSource
 import io.github.lucf15.tiffrenderer.sample.shared.theme.AppTheme
 import io.github.lucf15.tiffrenderer.sample.shared.ui.components.TextActionButton
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ViewerScreen(
@@ -60,8 +60,16 @@ fun ViewerScreen(
     modifier: Modifier = Modifier,
 ) {
     val state = remember(source) { TiffViewerState(source) }
-    val closeScope = rememberCoroutineScope()
-    DisposableEffect(state) { onDispose { closeScope.launch { state.close() } } }
+
+    // Not a rememberCoroutineScope().launch{} in a DisposableEffect's onDispose: that scope's own
+    // Job is cancelled as part of the same disposal, racing the just-launched close().
+    LaunchedEffect(state) {
+        try {
+            awaitCancellation()
+        } finally {
+            withContext(NonCancellable) { state.close() }
+        }
+    }
 
     var uiState by remember(state) { mutableStateOf<ViewerUiState>(ViewerUiState.Loading) }
     LaunchedEffect(state) {

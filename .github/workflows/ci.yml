@@ -183,8 +183,10 @@ jobs:
           submodules: recursive
 
       - uses: ./.github/actions/setup-android-toolchain
+      - uses: ./.github/actions/setup-emscripten-toolchain
 
-      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test :lib:core:klibApiCheck
+      - name: klibApiCheck covers every klib target (iosArm64/iosSimulatorArm64/wasmJs) in one pass, so this needs Emscripten too
+        run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test :lib:core:klibApiCheck
 
       - name: Checksum the iOS native libs this job just built and tested
         shell: bash
@@ -207,8 +209,49 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-wasm:
+    needs: validate-wrapper
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      TIFFRENDERER_WERROR: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-android-toolchain
+      - uses: ./.github/actions/setup-emscripten-toolchain
+
+      - name: Build the wasm module, run the real headless-browser test suite, build the sample web app
+        run: ./gradlew :lib:core:wasmJsTest :sample:webApp:wasmJsBrowserDistribution
+
+      - name: Checksum the wasm module this job just built and tested
+        run: |
+          cd lib/native/build/wasm
+          find . -type f ! -name SHA256SUMS -exec shasum -a 256 {} + > SHA256SUMS
+
+      - name: Attest build provenance for the wasm module this job built
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: |
+            lib/native/build/wasm/tiffcore_module.wasm
+            lib/native/build/wasm/tiffcore_module.mjs
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wasm-module
+          path: lib/native/build/wasm/
+          if-no-files-found: error
+          retention-days: 1
+
   semantic-release:
-    needs: [build-android, build-jvm, build-ios]
+    needs: [build-android, build-jvm, build-ios, build-wasm]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -229,7 +272,7 @@ jobs:
           node-version: lts/*
 
       - id: release
-        uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v4
+        uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -249,7 +292,7 @@ jobs:
           gh release upload "v${{ steps.release.outputs.new_release_version }}" release-assets/*.apk --repo ${{ github.repository }}
 
   publish-central:
-    needs: [semantic-release, build-android, build-jvm, build-ios]
+    needs: [semantic-release, build-android, build-jvm, build-ios, build-wasm]
     if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
@@ -328,7 +371,6 @@ jobs:
                 --signer-workflow "${{ github.repository }}/.github/workflows/ci.yml"
             verified=$((verified + 1))
           done
-          # libtiffrenderer_core.a + libtiff.a + libijg_jpeg.a + libwebp.a + libsharpyuv.a, per target
           if [ "$verified" -ne 10 ]; then
             echo "expected to verify 10 iOS native libs (5 per target x 2 targets), verified $verified" >&2
             exit 1
@@ -365,6 +407,33 @@ jobs:
             exit 1
           fi
 
+      - name: Download the wasm module built by build-wasm
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wasm-module
+          path: lib/native/build/wasm
+
+      - name: Verify the downloaded wasm module is internally consistent (not corrupted in transit)
+        run: |
+          cd lib/native/build/wasm
+          shasum -a 256 -c SHA256SUMS --strict
+
+      - name: Verify the downloaded wasm module matches build-wasm's attested provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd lib/native/build/wasm
+          verified=0
+          for f in tiffcore_module.wasm tiffcore_module.mjs; do
+            gh attestation verify "$f" --repo "${{ github.repository }}" \
+                --signer-workflow "${{ github.repository }}/.github/workflows/ci.yml"
+            verified=$((verified + 1))
+          done
+          if [ "$verified" -ne 2 ]; then
+            echo "expected to verify 2 wasm build outputs, verified $verified" >&2
+            exit 1
+          fi
+
       - name: Publish to Maven Central
         id: publish
         env:
@@ -372,6 +441,7 @@ jobs:
           TIFFRENDERER_SKIP_JVM_NATIVE_BUILD: "true"
           TIFFRENDERER_SKIP_IOS_NATIVE_BUILD: "true"
           TIFFRENDERER_SKIP_ANDROID_NATIVE_BUILD: "true"
+          TIFFRENDERER_SKIP_WASM_NATIVE_BUILD: "true"
           TIFFRENDERER_PREBUILT_JNI_LIBS_DIR: /tmp/android-native-libs
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

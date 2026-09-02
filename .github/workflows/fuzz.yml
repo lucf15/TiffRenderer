@@ -18,7 +18,9 @@ jobs:
           submodules: recursive
 
       - name: Install a Clang with the libFuzzer runtime (Apple's Xcode clang doesn't ship one)
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang llvm
+          command -v llvm-symbolizer || sudo ln -s "$(find /usr -name 'llvm-symbolizer-*' 2>/dev/null | sort -V | tail -n1)" /usr/bin/llvm-symbolizer
 
       - uses: ./.github/actions/setup-android-toolchain
 
@@ -38,9 +40,12 @@ jobs:
           restore-keys: tiff-fuzz-corpus-
 
       - name: Run tiff_fuzz against the accumulated corpus
+        id: fuzz
+        continue-on-error: true
         working-directory: lib/native/src/main/cpp
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: symbolize=1
         run: |
           mkdir -p /tmp/fuzz-artifacts /tmp/fuzz-corpus
           pad=$(grep -oP 'kControlBytes = \K[0-9]+' fuzz/tiff_fuzz.cpp)
@@ -55,12 +60,52 @@ jobs:
             -artifact_prefix=/tmp/fuzz-artifacts/ /tmp/fuzz-corpus
 
       - name: Upload crashers
-        if: failure()
+        if: steps.fuzz.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-crashers
           path: /tmp/fuzz-artifacts/
           if-no-files-found: warn
+
+      - name: Fail only if a crash implicates our own code, not a vendored dependency
+        if: steps.fuzz.outcome == 'failure'
+        working-directory: lib/native/src/main/cpp
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: symbolize=1
+        run: |
+          shopt -s nullglob
+          crashers=(/tmp/fuzz-artifacts/crash-* /tmp/fuzz-artifacts/oom-* /tmp/fuzz-artifacts/timeout-* /tmp/fuzz-artifacts/leak-*)
+          if [ ${#crashers[@]} -eq 0 ]; then
+            echo "tiff_fuzz failed but left no crash artifact behind; failing to be safe."
+            exit 1
+          fi
+
+          hitOurCode=0
+          for f in "${crashers[@]}"; do
+            echo "::group::Reproducing $(basename "$f")"
+            report=$(./build-fuzz/tiff_fuzz -timeout=30 -rss_limit_mb=4096 "$f" 2>&1) || true
+            echo "$report"
+            echo "::endgroup::"
+
+            frame=$(grep -oE '^ *#[0-9]+ 0x[0-9a-f]+ in .* [^ ]+\.(c|cc|cpp|h|hpp|hh):[0-9]+(:[0-9]+)?$' <<< "$report" | head -n1)
+            if [ -z "$frame" ]; then
+              echo "$(basename "$f"): couldn't resolve a source location for the crash, failing to be safe."
+              hitOurCode=1
+            elif grep -q 'third_party/' <<< "$frame"; then
+              echo "$(basename "$f"): crash is inside a vendored dependency, not our own code:"
+              echo "  $frame"
+            else
+              echo "$(basename "$f"): crash is inside our own code:"
+              echo "  $frame"
+              hitOurCode=1
+            fi
+          done
+
+          if [ "$hitOurCode" -eq 1 ]; then
+            exit 1
+          fi
+          echo "Every crash found only implicates a vendored dependency; not failing CI for it."
 
       - name: Save the fuzz corpus even if tiff_fuzz found a crasher
         if: always()

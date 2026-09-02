@@ -19,7 +19,7 @@ public fun Matrix.toTiffTransform(): TiffTransform {
 }
 
 /** Overload of [TiffPage.render] taking platform [Bitmap]/[Rect]/[Matrix] types directly. */
-public fun TiffPage.render(
+public suspend fun TiffPage.render(
     destination: Bitmap,
     destClip: Rect? = null,
     transform: Matrix? = null,

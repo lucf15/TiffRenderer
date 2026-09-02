@@ -11,13 +11,18 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.rawValue
 import kotlinx.cinterop.refTo
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.set
+import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.toKString
+import kotlinx.cinterop.toLong
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
-import platform.Foundation.NSLock
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import tiffcore.TIFFCORE_ERROR_ILLEGAL_STATE
 import tiffcore.TIFFCORE_ERROR_INVALID_ARG
 import tiffcore.TIFFCORE_OK
@@ -34,95 +39,83 @@ import tiffcore.tiffcore_release_raster
 import tiffcore.tiffcore_render_page
 import tiffcore.tiffcore_retain_raster
 
-/** [lock] serializes native calls per document (a TIFF*'s directory cursor isn't thread-safe);
- * `NSLock` since Kotlin's `synchronized()` is JVM-only. [ptr] clears under the same lock on close,
- * so a blocked call sees a closed handle instead of a freed pointer. */
-@OptIn(ExperimentalForeignApi::class)
-internal actual class TiffCoreHandle internal constructor(private var ptr: CPointer<TiffCoreDocument>?) {
-    private val lock: NSLock = NSLock()
-
-    internal fun <T> use(block: (CPointer<TiffCoreDocument>) -> T): T {
-        lock.lock()
-        try {
-            val p = checkNotNull(ptr) { "TIFF document is not open" }
-            return block(p)
-        } finally {
-            lock.unlock()
-        }
-    }
-
-    internal fun closeOnce(free: (CPointer<TiffCoreDocument>) -> Unit) {
-        lock.lock()
-        try {
-            val p = ptr
-            if (p != null) {
-                ptr = null
-                free(p)
-            }
-        } finally {
-            lock.unlock()
-        }
-    }
-}
-
-/** Binds [TiffCoreBinding] straight to `tiff_core.h` via cinterop. */
+/** Binds [TiffCoreBinding] straight to `tiff_core.h` via cinterop. [TiffCoreHandle] stores the
+ * pointer as a platform-neutral [Long]; [asPointer] rehydrates it into a real [CPointer] at each
+ * call site (`.rawValue`/`.toCPointer()` round-trip). Every call runs under the injected
+ * [dispatcher] (see [TiffRenderer.open]): these are blocking native calls, and `suspend` functions
+ * must be safe to call from the main thread without the caller having to remember to dispatch
+ * themselves. */
 @OptIn(ExperimentalForeignApi::class)
 internal actual object TiffCoreBinding {
-    actual fun open(source: TiffSource): TiffCoreHandle {
-        globalInit
-        return memScoped {
-            val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
-            errBuf[0] = 0.toByte()
-            val outDoc = alloc<CPointerVar<TiffCoreDocument>>()
-            val status = tiffcore_open(source.fd, source.size, outDoc.ptr, errBuf, ERR_BUF_SIZE.toULong())
-            if (status != TIFFCORE_OK) {
-                throwForStatus(status, errBuf, "cannot open TIFF")
+    actual suspend fun open(source: TiffSource, dispatcher: CoroutineDispatcher): TiffCoreHandle =
+        withContext(dispatcher) {
+            globalInit
+            memScoped {
+                val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
+                errBuf[0] = 0.toByte()
+                val outDoc = alloc<CPointerVar<TiffCoreDocument>>()
+                val status = tiffcore_open(source.fd, source.size, outDoc.ptr, errBuf, ERR_BUF_SIZE.toULong())
+                if (status != TIFFCORE_OK) {
+                    throwForStatus(status, errBuf, "cannot open TIFF")
+                }
+                TiffCoreHandle(checkNotNull(outDoc.value).rawValue.toLong())
             }
-            TiffCoreHandle(checkNotNull(outDoc.value))
+        }
+
+    // NonCancellable: this frees native state, so it must run even if the calling coroutine is
+    // already cancelled. A plain withContext(dispatcher) throws immediately without entering the
+    // block in that case, leaking the native handle.
+    actual suspend fun close(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher) = withContext(dispatcher + NonCancellable) {
+        handle.closeOnce { ptr -> tiffcore_close(ptr.asPointer()) }
+    }
+
+    actual suspend fun getPageCount(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher): Int =
+        withContext(dispatcher) {
+            handle.use { ptr -> tiffcore_get_page_count(ptr.asPointer()) }
+        }
+
+    actual suspend fun openPage(
+        handle: TiffCoreHandle,
+        index: Int,
+        dispatcher: CoroutineDispatcher,
+    ): TiffCorePageSize = withContext(dispatcher) {
+        handle.use { ptr ->
+            memScoped {
+                val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
+                errBuf[0] = 0.toByte()
+                val outWidth = alloc<UIntVar>()
+                val outHeight = alloc<UIntVar>()
+                val status = tiffcore_open_page(
+                    ptr.asPointer(), index, outWidth.ptr, outHeight.ptr, errBuf, ERR_BUF_SIZE.toULong(),
+                )
+                if (status != TIFFCORE_OK) {
+                    throwForStatus(status, errBuf, "cannot open TIFF page")
+                }
+                TiffCorePageSize(outWidth.value.toInt(), outHeight.value.toInt())
+            }
         }
     }
 
-    actual fun close(handle: TiffCoreHandle) {
-        handle.closeOnce { ptr -> tiffcore_close(ptr) }
-    }
-
-    actual fun getPageCount(handle: TiffCoreHandle): Int =
-        handle.use { ptr -> tiffcore_get_page_count(ptr) }
-
-    actual fun openPage(handle: TiffCoreHandle, index: Int): TiffCorePageSize = handle.use { ptr ->
-        memScoped {
-            val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
-            errBuf[0] = 0.toByte()
-            val outWidth = alloc<UIntVar>()
-            val outHeight = alloc<UIntVar>()
-            val status =
-                tiffcore_open_page(ptr, index, outWidth.ptr, outHeight.ptr, errBuf, ERR_BUF_SIZE.toULong())
-            if (status != TIFFCORE_OK) {
-                throwForStatus(status, errBuf, "cannot open TIFF page")
-            }
-            TiffCorePageSize(outWidth.value.toInt(), outHeight.value.toInt())
-        }
-    }
-
-    actual fun render(
+    actual suspend fun render(
         handle: TiffCoreHandle,
         index: Int,
         destination: TiffBitmap,
         clip: TiffRect,
         transform: TiffTransform,
         mode: TiffRenderMode,
-    ): Boolean {
+        dispatcher: CoroutineDispatcher,
+    ): Boolean = withContext(dispatcher) {
         val nativeMode = when (mode) {
             TiffRenderMode.FOR_DISPLAY -> TIFFCORE_RENDER_MODE_DISPLAY
             TiffRenderMode.FOR_PRINT -> TIFFCORE_RENDER_MODE_PRINT
         }
-        return handle.use { ptr ->
+        handle.use { ptr ->
             memScoped {
                 val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
                 errBuf[0] = 0.toByte()
                 destination.pixels.usePinned { pinned ->
                     val status = tiffcore_render_page(
-                        ptr,
+                        ptr.asPointer(),
                         index,
                         pinned.addressOf(0).reinterpret<UIntVar>(),
                         destination.width,
@@ -149,25 +142,30 @@ internal actual object TiffCoreBinding {
         }
     }
 
-    actual fun retainRaster(handle: TiffCoreHandle, index: Int): Boolean =
-        handle.use { ptr ->
-            memScoped {
-                val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
-                errBuf[0] = 0.toByte()
-                val status = tiffcore_retain_raster(ptr, index, errBuf, ERR_BUF_SIZE.toULong())
-                if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
-                    throwForStatus(status, errBuf, "failed to decode TIFF page")
+    actual suspend fun retainRaster(handle: TiffCoreHandle, index: Int, dispatcher: CoroutineDispatcher): Boolean =
+        withContext(dispatcher) {
+            handle.use { ptr ->
+                memScoped {
+                    val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
+                    errBuf[0] = 0.toByte()
+                    val status = tiffcore_retain_raster(ptr.asPointer(), index, errBuf, ERR_BUF_SIZE.toULong())
+                    if (status != TIFFCORE_OK && status != TIFFCORE_OK_PARTIAL) {
+                        throwForStatus(status, errBuf, "failed to decode TIFF page")
+                    }
+                    status == TIFFCORE_OK_PARTIAL
                 }
-                status == TIFFCORE_OK_PARTIAL
             }
         }
 
-    actual fun releaseRaster(handle: TiffCoreHandle) {
-        handle.use { ptr -> tiffcore_release_raster(ptr) }
+    actual suspend fun releaseRaster(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher) = withContext(dispatcher + NonCancellable) {
+        handle.use { ptr -> tiffcore_release_raster(ptr.asPointer()) }
     }
 }
 
 private const val ERR_BUF_SIZE = 512L
+
+@OptIn(ExperimentalForeignApi::class)
+private fun Long.asPointer(): CPointer<TiffCoreDocument> = checkNotNull(this.toCPointer())
 
 // Must run exactly once before any other tiffcore_* call; `by lazy` gives that for free.
 @OptIn(ExperimentalForeignApi::class)

@@ -1,0 +1,14 @@
+name: Set up Emscripten toolchain
+description: Installs the pinned Emscripten SDK, needed to cross-compile tiffrenderer_core for wasmJs.
+
+inputs:
+  version:
+    description: Pinned Emscripten version (must match what's used for local wasmJs builds)
+    default: "6.0.8"
+
+runs:
+  using: composite
+  steps:
+    - uses: emscripten-core/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
+      with:
+        version: ${{ inputs.version }}

@@ -6,14 +6,17 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 
 /** Regression coverage for [TiffSource.markConsumed]: the old non-atomic check-then-set let two
  * threads racing to construct a [TiffRenderer] over the same source both proceed. It's a real
- * compare-and-set now, so exactly one caller can win. */
+ * compare-and-set now, so exactly one caller can win. Real [Thread]s, so each bridges in via
+ * [runBlocking]. */
 class TiffSourceConsumedRaceTest {
 
     @Test
-    fun construction_racingOverOneSource_exactlyOneSucceeds() {
+    fun construction_racingOverOneSource_exactlyOneSucceeds() = runTest {
         repeat(20) {
             val source = Fixtures.open("single_page_rgb.tif")
             val ready = CountDownLatch(1)
@@ -25,7 +28,7 @@ class TiffSourceConsumedRaceTest {
                     ready.await()
                     repeat(50) {
                         try {
-                            winners += TiffRenderer(source)
+                            runBlocking { winners += TiffRenderer.open(source) }
                         } catch (_: IllegalStateException) {
                             rejections.incrementAndGet()
                         }
@@ -47,9 +50,9 @@ class TiffSourceConsumedRaceTest {
      * (non-atomic) `!closed` check would both release the same underlying resource. It's a
      * compare-and-set now too, so only the first caller actually releases anything. */
     @Test
-    fun close_racingFromMultipleThreads_neverThrowsUnexpectedly() {
+    fun close_racingFromMultipleThreads_neverThrowsUnexpectedly() = runTest {
         repeat(20) {
-            val renderer = TiffRenderer(Fixtures.open("single_page_rgb.tif"))
+            val renderer = TiffRenderer.open(Fixtures.open("single_page_rgb.tif"))
             val ready = CountDownLatch(1)
             val unexpected = ConcurrentLinkedQueue<Throwable>()
 
@@ -57,7 +60,7 @@ class TiffSourceConsumedRaceTest {
                 Thread {
                     ready.await()
                     try {
-                        renderer.close()
+                        runBlocking { renderer.close() }
                     } catch (_: IllegalStateException) {
                         // Expected for every loser of the race.
                     } catch (t: Throwable) {

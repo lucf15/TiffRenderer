@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import io.github.lucf15.tiffrenderer.sample.shared.platform.rememberTiffFilePickerLauncher
 import io.github.lucf15.tiffrenderer.sample.shared.theme.AppTheme
 import io.github.lucf15.tiffrenderer.sample.shared.ui.components.AppButton
+import io.github.lucf15.tiffrenderer.sample.shared.ui.components.PictureIcon
 
 @Composable
 fun PickerScreen(
@@ -48,10 +49,7 @@ fun PickerScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(32.dp),
         ) {
-            BasicText(
-                text = "🖼️",
-                style = AppTheme.textStyles.displayLarge,
-            )
+            PictureIcon()
             Spacer(Modifier.height(16.dp))
             BasicText(
                 text = "tiffrenderer demo",

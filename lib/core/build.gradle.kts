@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.validation.ExperimentalBCVApi::class)
+@file:OptIn(kotlinx.validation.ExperimentalBCVApi::class, org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
 
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import kotlinx.validation.ApiValidationExtension
@@ -39,6 +39,16 @@ kotlin {
 
     jvm()
 
+    wasmJs {
+        browser {
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                }
+            }
+        }
+    }
+
     val nativeCore = project(":lib:native")
 
     listOf(iosArm64(), iosSimulatorArm64()).forEach { iosTarget ->
@@ -57,6 +67,10 @@ kotlin {
     }
 
     sourceSets {
+        commonMain.dependencies {
+            implementation(libs.kotlinx.coroutines.core)
+        }
+
         val jvmAndroidMain = create("jvmAndroidMain") {
             dependsOn(commonMain.get())
         }
@@ -70,6 +84,16 @@ kotlin {
             dependsOn(jvmAndroidMain)
             resources.srcDir(nativeCore.layout.buildDirectory.dir("jvm"))
         }
+        wasmJsMain {
+            resources.srcDir(nativeCore.layout.buildDirectory.dir("wasm"))
+        }
+        wasmJsTest {
+            resources.srcDir(nativeCore.layout.buildDirectory.dir("wasm"))
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
@@ -79,6 +103,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.kotlinx.resources)
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
 
@@ -110,6 +135,18 @@ if (bcvKlibPipelineHostRecognized) {
 
 tasks.named("jvmProcessResources") {
     dependsOn(project(":lib:native").tasks.named("buildTiffRendererJniForJvm"))
+}
+
+tasks.named("wasmJsProcessResources") {
+    dependsOn(project(":lib:native").tasks.named("buildTiffCoreForWasm"))
+}
+
+tasks.named("wasmJsTestProcessResources") {
+    dependsOn(project(":lib:native").tasks.named("buildTiffCoreForWasm"))
+}
+
+tasks.matching { it.name == "wasmJsTestCopyResources" }.configureEach {
+    dependsOn(project(":lib:native").tasks.named("buildTiffCoreForWasm"))
 }
 
 tasks.named<Jar>("jvmJar") {

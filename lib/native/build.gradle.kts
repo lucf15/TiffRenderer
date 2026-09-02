@@ -101,6 +101,24 @@ val buildTiffCoreForIos = tasks.register<Exec>("buildTiffCoreForIos") {
     outputs.cacheIf { true }
 }
 
+val buildTiffCoreForWasm = tasks.register<Exec>("buildTiffCoreForWasm") {
+    group = "build"
+    description = "Cross-compiles tiffrenderer_core into a wasmJs ES module via Emscripten/CMake."
+
+    onlyIf { System.getenv("TIFFRENDERER_SKIP_WASM_NATIVE_BUILD") != "true" }
+
+    val cppDir = file("src/main/cpp")
+    val outputDir = layout.buildDirectory.dir("wasm")
+
+    workingDir = cppDir
+    commandLine("./build-wasm.sh", outputDir.get().asFile.absolutePath)
+
+    inputs.dir(cppDir).withPropertyName("cppSources").ignoreEmptyDirectories()
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(outputDir).withPropertyName("wasmModule")
+    outputs.cacheIf { true }
+}
+
 val buildTiffRendererJniForJvm = tasks.register<Exec>("buildTiffRendererJniForJvm") {
     group = "build"
     description = "Builds tiffrenderer_jni_jvm for the host OS/arch via CMake."

@@ -4,18 +4,20 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
 
 class TiffRendererCorruptInputTest {
 
-    private fun open(name: String) = TiffRenderer(Fixtures.open(name))
+    private suspend fun open(name: String) = TiffRenderer.open(Fixtures.open(name), Dispatchers.Unconfined)
 
     @Test
-    fun constructor_garbageBytes_throwsTiffIOException() {
+    fun constructor_garbageBytes_throwsTiffIOException() = runTest {
         assertFailsWith<TiffIOException> { open("not_a_tiff.bin") }
     }
 
     @Test
-    fun render_hugeDimensionsPage_throwsTiffIOExceptionInsteadOfCrashing() {
+    fun render_hugeDimensionsPage_throwsTiffIOExceptionInsteadOfCrashing() = runTest {
         open("huge_dimensions.tif").use { renderer ->
             val page = renderer.openPage(0)
             assertEquals(100000, page.width)
@@ -33,7 +35,7 @@ class TiffRendererCorruptInputTest {
     }
 
     @Test
-    fun retainRaster_hugeDimensionsPage_throwsTiffIOExceptionInsteadOfCrashing() {
+    fun retainRaster_hugeDimensionsPage_throwsTiffIOExceptionInsteadOfCrashing() = runTest {
         open("huge_dimensions.tif").use { renderer ->
             val page = renderer.openPage(0)
             try {
@@ -45,7 +47,7 @@ class TiffRendererCorruptInputTest {
     }
 
     @Test
-    fun render_truncatedFile_throwsTiffIOException() {
+    fun render_truncatedFile_throwsTiffIOException() = runTest {
         open("truncated.tif").use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(page.width, page.height)
@@ -64,7 +66,7 @@ class TiffRendererCorruptInputTest {
      * (`stopOnError=0`) and returns the rest of the raster, so this must succeed, unlike
      * [render_truncatedFile_throwsTiffIOException] above where the read fails outright. */
     @Test
-    fun render_partiallyCorruptFile_succeedsWithTheDecodableStrips() {
+    fun render_partiallyCorruptFile_succeedsWithTheDecodableStrips() = runTest {
         open("partially_corrupt.tif").use { renderer ->
             val page = renderer.openPage(0)
             assertEquals(32, page.width)
@@ -94,7 +96,7 @@ class TiffRendererCorruptInputTest {
     /** Same fixture, but via [TiffPage.retainRaster] first: proves the cached-raster render path
      * (a separate code path from the direct-decode one above) also reports partial-ness. */
     @Test
-    fun retainRasterThenRender_partiallyCorruptFile_succeedsAndReportsPartialFromBothCalls() {
+    fun retainRasterThenRender_partiallyCorruptFile_succeedsAndReportsPartialFromBothCalls() = runTest {
         open("partially_corrupt.tif").use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(page.width, page.height)
@@ -118,7 +120,7 @@ class TiffRendererCorruptInputTest {
     }
 
     @Test
-    fun render_cleanFile_neverCallsOnPartialDecode() {
+    fun render_cleanFile_neverCallsOnPartialDecode() = runTest {
         open("single_page_rgb.tif").use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(page.width, page.height)
