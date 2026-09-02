@@ -58,7 +58,14 @@ TARGET_DIR="${OUT_DIR}/${OS_NAME}-${ARCH_NAME}"
 mkdir -p "$TARGET_DIR"
 
 build_dir="$(mktemp -d)"
-trap 'rm -rf "$build_dir"' EXIT
+cleanup_build_dir() {
+  for _ in 1 2 3 4 5; do
+    rm -rf "$build_dir" 2>/dev/null && return 0
+    sleep 1
+  done
+  rm -rf "$build_dir" 2>/dev/null || true
+}
+trap cleanup_build_dir EXIT
 echo "Using cmake: ${CMAKE_BIN} ($("$CMAKE_BIN" --version | head -1))"
 echo "Targeting JDK arch: ${ARCH_NAME} (os.arch=${JAVA_ARCH})"
 
