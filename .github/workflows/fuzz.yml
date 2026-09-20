@@ -56,29 +56,35 @@ jobs:
             cat "$f" > "$dest"
             head -c "$pad" /dev/zero >> "$dest"
           done
-          ./build-fuzz/tiff_fuzz -max_total_time=1800 -rss_limit_mb=4096 \
+          ./build-fuzz/tiff_fuzz -fork=1 -ignore_crashes=1 -ignore_ooms=1 -ignore_timeouts=1 \
+            -max_total_time=1800 -rss_limit_mb=4096 \
             -artifact_prefix=/tmp/fuzz-artifacts/ /tmp/fuzz-corpus
 
       - name: Upload crashers
-        if: steps.fuzz.outcome == 'failure'
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-crashers
           path: /tmp/fuzz-artifacts/
-          if-no-files-found: warn
+          if-no-files-found: ignore
 
       - name: Fail only if a crash implicates our own code, not a vendored dependency
-        if: steps.fuzz.outcome == 'failure'
+        if: always()
         working-directory: lib/native/src/main/cpp
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           ASAN_OPTIONS: symbolize=1
+          FUZZ_OUTCOME: ${{ steps.fuzz.outcome }}
         run: |
           shopt -s nullglob
           crashers=(/tmp/fuzz-artifacts/crash-* /tmp/fuzz-artifacts/oom-* /tmp/fuzz-artifacts/timeout-* /tmp/fuzz-artifacts/leak-*)
           if [ ${#crashers[@]} -eq 0 ]; then
-            echo "tiff_fuzz failed but left no crash artifact behind; failing to be safe."
-            exit 1
+            if [ "$FUZZ_OUTCOME" = "failure" ]; then
+              echo "tiff_fuzz failed but left no crash artifact behind; failing to be safe."
+              exit 1
+            fi
+            echo "No crashes found."
+            exit 0
           fi
 
           hitOurCode=0
