@@ -95,7 +95,7 @@ toff_t memSeekProc(thandle_t handle, toff_t offset, int whence) {
 toff_t memSizeProc(thandle_t handle) { return static_cast<MemHandle*>(handle)->buffer.size(); }
 }
 
-TIFF* openFromFd(int fd, int64_t size) {
+TIFF* openFromFd([[maybe_unused]] int fd, [[maybe_unused]] int64_t size) {
 #ifdef _WIN32
     return nullptr;
 #else
@@ -109,7 +109,7 @@ TIFF* openFromFd(int fd, int64_t size) {
 #endif
 }
 
-void closeTiff(TIFF* tiff) {
+void closeTiff([[maybe_unused]] TIFF* tiff) {
 #ifndef _WIN32
     if (!tiff) return;
     std::unique_ptr<FdHandle> handle(static_cast<FdHandle*>(TIFFClientdata(tiff)));
