@@ -4,21 +4,20 @@
 [![CI](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml/badge.svg)](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-**Render TIFF documents from Kotlin on Android, iOS, desktop, and the web.**
-
-Open a document, choose a page and a size, get an image. TiffRenderer handles decoding,
-concurrent requests, native resources and memory limits using one shared libtiff core.
+TIFF decoding and rendering for Kotlin Multiplatform: Android, iOS, JVM and Kotlin/Wasm.
+Supports single-page and multipage files through libtiff, with configurable memory limits.
 
 > This checkout contains the upcoming **3.0 API**, which breaks compatibility with 2.x.
 > Until 3.0 is published, build this checkout from source to use the examples below.
 
-[Get started](#get-started) · [Platforms](#platforms) · [Rendering](#rendering) ·
+[Web demo](https://lucf15.github.io/TiffRenderer/) · [Get started](#get-started) · [Platforms](#platforms) · [Rendering](#rendering) · [Output size](#output-size) ·
 [Resources and cancellation](#resources-and-cancellation) · [Limits](#limits) ·
+[Codec support](#codec-support) · [Native libraries](#native-libraries) ·
 [Sample app](#sample-app) · [Building and testing](#building-and-testing)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/sample-dark.png">
-  <img src="docs/images/sample.png" alt="The Compose Unstyled sample displaying a multipage TIFF">
+  <img src="docs/images/sample.png" width="1280" alt="TiffRenderer sample displaying a multipage TIFF">
 </picture>
 
 ## Get started
@@ -36,15 +35,17 @@ kotlin {
 Plain JVM and Android projects can add the same dependency in their `dependencies` block.
 Native libraries are included automatically. Choose a release matching the API you use.
 
-The main operation fits a page inside a bounding box while keeping its proportions:
+The Kotlin document API is **suspending**. Call it from a `suspend` function or an existing
+coroutine scope. For example, render the first page inside a 1200 × 1600 pixel bounding box:
 
 ```kotlin
-val image = TiffRenderer.withDocument(source) { document ->
-    document.renderPage(
-        pageIndex = 0,
-        size = RenderSize.fit(maxWidth = 1200, maxHeight = 1600),
-    ).image
-}
+suspend fun renderFirstPage(source: TiffSource): TiffBitmap =
+    TiffRenderer.withDocument(source) { document ->
+        document.renderPage(
+            pageIndex = 0,
+            size = RenderSize.fit(maxWidth = 1200, maxHeight = 1600),
+        ).image
+    }
 ```
 
 Page indices start at **0**. Sizes are in **pixels**. The document closes when the block
@@ -55,6 +56,24 @@ For a single render:
 ```kotlin
 val result = TiffRenderer.render(source, pageIndex = 0, size = RenderSize.fit(1200, 1600))
 ```
+
+### Suspending and synchronous calls
+
+| API | Execution |
+|---|---|
+| Kotlin `open`, `withDocument`, `use`, `render` | `suspend` |
+| Document `pageCount`, `pageInfo`, `renderPage`, `renderInto`, `trimCache`, `close` | `suspend` |
+| `TiffSource.from…`, `RenderSize.fit`, option constructors, returned metadata properties | Synchronous |
+| Pixel exports and image conversions | Synchronous; may allocate and copy pixels |
+| JVM `BlockingTiffRenderer` | Blocks the calling thread |
+| JVM `TiffFutures.render` / `TiffRenderer.renderAsync` | Returns a `CompletableFuture` |
+| Swift adapter `TiffRenderer.render` | `async throws` |
+
+The suspend API dispatches native work internally. Calling it from a UI coroutine does not
+require wrapping it in `withContext(Dispatchers.IO)`. This does not apply to synchronous pixel
+exports or conversions; keep large copies off the UI thread.
+
+The Kotlin examples below run inside a suspend function or coroutine.
 
 ## Platforms
 
@@ -169,16 +188,47 @@ avoid the extra copy. The source is reusable and has no `close()` or `release()`
 
 ## Rendering
 
-| Operation | Use it for |
-|---|---|
-| `pageCount()` | Number of pages; resolved lazily by walking the TIFF directories |
-| `pageInfo(index)` | Page index, original width, height and raster size estimate |
-| `renderPage(index, size)` | A new, independent output image |
-| `renderInto(index, destination, ...)` | Reusing a destination with a clip or affine transform |
-| `trimCache()` | Releasing the document's decoded raster cache |
+| Document method | Returns | Purpose |
+|---|---|---|
+| `suspend pageCount()` | `Int` | Number of pages; resolved lazily by walking TIFF directories |
+| `suspend pageInfo(index)` | `TiffPageInfo` | Original `width`, `height`, `index` and `rasterBytes` estimate |
+| `suspend renderPage(index, size, sampling)` | `TiffRenderResult` | A new output image and any decode warnings |
+| `suspend renderInto(index, destination, clip, transform, sampling)` | `Set<TiffWarning>` | Render into an existing bitmap |
+| `suspend trimCache()` | `Unit` | Release the retained decoded raster |
+| `suspend close()` | `Unit` | Release the document and its acquired resources |
 
-`RenderSize.fit(...)` preserves aspect ratio and avoids upscaling by default. Set
-`allowUpscale = true` explicitly, or choose `RenderSize.Original` for native resolution.
+`sampling` defaults to `TiffSampling.SMOOTH`; `clip` and `transform` default to `null`.
+`TiffRenderResult.image` remains valid after the document closes.
+
+### Output size
+
+`RenderSize` has two variants. The lowercase `fit(...)` factory constructs a `RenderSize.Fit`.
+There are no separate width-only, height-only, crop or stretch factories.
+
+| Size | Behaviour |
+|---|---|
+| `RenderSize.fit(maxWidth, maxHeight)` | Fit inside both bounds, preserve aspect ratio, never upscale |
+| `RenderSize.fit(maxWidth, maxHeight, allowUpscale = true)` | Same fit, with upscaling allowed |
+| `RenderSize.Fit(maxWidth, maxHeight, allowUpscale = false)` | Direct constructor for the same options |
+| `RenderSize.Original` | Render at the page's native dimensions |
+
+Both fit bounds are required, must be positive, and are measured in pixels. The output can
+be smaller than either bound; `fit` does not add padding or force an exact bitmap size.
+For a 4000 × 2000 page, `fit(1200, 1200)` produces a 1200 × 600 image.
+`fit(6000, 6000)` keeps it at 4000 × 2000; allowing upscaling produces 6000 × 3000.
+
+```kotlin
+val thumbnail = RenderSize.fit(240, 320)
+val fitWidth = RenderSize.fit(maxWidth = 1200, maxHeight = Int.MAX_VALUE)
+val fitHeight = RenderSize.fit(maxWidth = Int.MAX_VALUE, maxHeight = 1600)
+val original = RenderSize.Original
+```
+
+Every size, including `Original`, is subject to the document's output and decoding limits.
+A smaller fit bounds the output allocation; it does not avoid decoding the full source page.
+For a fixed-size canvas, clipping or positioning, use `renderInto` with a destination bitmap.
+
+### Sampling and transforms
 
 `TiffSampling.SMOOTH` uses bilinear sampling with mip minification. `NEAREST` preserves discrete
 source pixels. `TiffTransform.scale`, `translate`, `rotate`, and `identity` build affine transforms.
@@ -229,7 +279,7 @@ interruption of native decoding.
 The decoder always reads the **full source page** before resampling. A small thumbnail reduces
 output memory, not the source raster's decoding cost.
 
-The defaults are conservative and configurable per document with `TiffOptions(limits = ...)`:
+Configure these per-document defaults with `TiffOptions(limits = ...)`:
 
 | Limit | Default |
 |---|---:|
@@ -252,16 +302,41 @@ a page that fits `cacheBytes`, is released on document close, and can be trimmed
 Color output is 8-bit RGBA without ICC color management. High-bit-depth and floating-point TIFFs
 lose precision when converted for display.
 
-Supported compression: **uncompressed, PackBits, LZW, CCITT Group 3/4, Deflate, JPEG and WebP**.
-Zstd, LERC, LZMA, JBIG and legacy JPEG are outside the supported codec set.
+## Codec support
+
+| Compression | Supported | Decoder |
+|---|---|---|
+| Uncompressed | Yes | libtiff |
+| PackBits | Yes | libtiff |
+| LZW | Yes | libtiff |
+| CCITT Group 3/4 | Yes | libtiff |
+| Deflate / ZIP | Yes | zlib |
+| JPEG-in-TIFF | Yes | IJG libjpeg |
+| WebP-in-TIFF | Yes | libwebp |
+| Zstd, LERC, LZMA, JBIG, legacy JPEG | No | Not enabled in this build |
+
+## Native libraries
+
+Pinned Git submodules under `lib/native/src/main/cpp/third_party/`, shared by every platform:
+
+| Library | Version |
+|---|---|
+| [libtiff](https://gitlab.com/libtiff/libtiff) | 4.7.2 |
+| [IJG libjpeg](https://github.com/libjpeg-turbo/ijg) | 10 |
+| [libwebp](https://github.com/webmproject/libwebp) | 1.6.0 |
+
+The dependency-update workflows update these submodules and this table together.
+zlib comes from the platform/toolchain; Wasm uses Emscripten's zlib port.
+Licenses and copyright notices are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## Sample app
 
-The sample is a Compose Unstyled document workspace for Android, iOS, desktop and Wasm.
-It opens with an original four-page TIFF publication. The document viewer includes a resizable
-thumbnail sidebar, grouped toolbar controls, fit-width and fit-page modes, light and dark appearances,
-keyboard shortcuts and native file pickers. Additional bundled examples are available after closing
-the current document from the information panel.
+[Open the web demo](https://lucf15.github.io/TiffRenderer/) to test bundled documents or import a TIFF.
+Files are decoded locally in the browser and are not uploaded.
+
+The Compose Unstyled sample runs on Android, iOS, desktop and Wasm. It includes a resizable
+thumbnail sidebar, fit-width and fit-page modes, keyboard shortcuts and native file pickers.
+To return to the sample list, close the document from the information panel.
 
 ```shell
 ./gradlew :sample:desktopApp:run
@@ -304,7 +379,7 @@ node --test lib/native/src/test/js/tiffcore-glue.test.mjs
 ```
 
 Browser tests require Chrome/Chromium. Android tests require a device/emulator; iOS tests require
-a compatible simulator. CI runs real decode fixtures, worker lifecycle tests, native sanitizer
+a compatible simulator. CI runs decode fixtures, worker lifecycle tests, native sanitizer
 checks and scheduled fuzzing. Fuzz crashes in dependencies fail the job too.
 
 The C++ core uses libtiff, IJG libjpeg and libwebp. See [third-party licenses](THIRD_PARTY_LICENSES.md).
