@@ -50,7 +50,9 @@ public:
         for (double value : inverse) {
             if (!std::isfinite(value) || std::fabs(value) > std::numeric_limits<float>::max()) return false;
         }
-        *out = AffineTransform(inverse[0], inverse[1], inverse[2], inverse[3], inverse[4], inverse[5]);
+        *out = AffineTransform(static_cast<float>(inverse[0]), static_cast<float>(inverse[1]),
+                               static_cast<float>(inverse[2]), static_cast<float>(inverse[3]),
+                               static_cast<float>(inverse[4]), static_cast<float>(inverse[5]));
         return true;
     }
 

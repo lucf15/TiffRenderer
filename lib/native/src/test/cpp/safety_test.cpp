@@ -10,18 +10,27 @@ static int budget = -1;
 void* operator new(std::size_t size) {
     if (budget == 0) throw std::bad_alloc();
     if (budget > 0) --budget;
-    void* p = std::malloc(size);
+    void* p = std::malloc(size == 0 ? 1 : size);
     if (!p) throw std::bad_alloc();
     ++allocations;
     return p;
 }
 void operator delete(void* p) noexcept { if (p) { --allocations; std::free(p); } }
+void operator delete(void* p, std::size_t) noexcept { ::operator delete(p); }
+void* operator new[](std::size_t size) { return ::operator new(size); }
+void operator delete[](void* p) noexcept { ::operator delete(p); }
+void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
 static void verify(bool condition, const char* message) {
     if (!condition) { std::fprintf(stderr, "%s\n", message); std::exit(3); }
 }
 int main(int argc, char** argv) {
     const uint8_t bytes[] = {'I','I',42,0};
     const int initial = allocations;
+    void* scalar = ::operator new(8);
+    ::operator delete(scalar, std::size_t(8));
+    void* array = ::operator new[](8);
+    ::operator delete[](array, std::size_t(8));
+    verify(allocations == initial, "sized delete bypassed allocation accounting");
     budget = 1;
     try { tiffrenderer::openFromMemory(bytes, sizeof(bytes)); } catch (const std::bad_alloc&) {}
     budget = -1;
