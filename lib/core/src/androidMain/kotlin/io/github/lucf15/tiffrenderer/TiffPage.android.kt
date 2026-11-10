@@ -18,13 +18,10 @@ public fun Matrix.toTiffTransform(): TiffTransform {
     return TiffTransform(floatArrayOf(values[0], values[1], values[2], values[3], values[4], values[5]))
 }
 
-/** Overload of [TiffPage.render] taking platform [Bitmap]/[Rect]/[Matrix] types directly. */
-public suspend fun TiffPage.render(
+public suspend fun TiffRenderer.renderInto(
+    pageIndex: Int,
     destination: Bitmap,
-    destClip: Rect? = null,
+    clip: Rect? = null,
     transform: Matrix? = null,
-    renderMode: TiffRenderMode = TiffRenderMode.FOR_DISPLAY,
-    onPartialDecode: (() -> Unit)? = null,
-): Unit = render(
-    TiffBitmap(destination), destClip?.toTiffRect(), transform?.toTiffTransform(), renderMode, onPartialDecode,
-)
+    sampling: TiffSampling = TiffSampling.SMOOTH,
+): Set<TiffWarning> = renderInto(pageIndex, TiffBitmap(destination), clip?.toTiffRect(), transform?.toTiffTransform(), sampling)

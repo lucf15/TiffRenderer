@@ -23,7 +23,7 @@ class TiffRendererCodecTest {
                 assertTrue(page.width > 0, "page $i width")
                 assertTrue(page.height > 0, "page $i height")
                 val bitmap = createTiffBitmap(page.width, page.height)
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                 page.close()
             }
         }
@@ -38,7 +38,7 @@ class TiffRendererCodecTest {
             val bitmap = createTiffBitmap(page.width, page.height)
             try {
                 assertFailsWith<TiffIOException> {
-                    page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                    page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                 }
             } finally {
                 page.close()
@@ -85,7 +85,7 @@ class TiffRendererCodecTest {
                 assertEquals(w, page.width)
                 assertEquals(h, page.height)
                 val bitmap = createTiffBitmap(page.width, page.height)
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                 page.close()
             }
         }

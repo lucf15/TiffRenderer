@@ -12,7 +12,7 @@ inputs:
   java-arch:
     required: true
   gradle-tasks:
-    default: ":lib:core:jvmTest :sample:desktopApp:jar"
+    default: ":lib:core:jvmTest :sample:shared:jvmTest :sample:desktopApp:jar"
 
 runs:
   using: composite

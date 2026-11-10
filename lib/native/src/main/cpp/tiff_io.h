@@ -20,8 +20,11 @@
 #include <tiffio.h>
 
 #include <cstdint>
+#include <memory>
 
 namespace tiffrenderer {
+using OpenOptions = std::unique_ptr<TIFFOpenOptions, decltype(&TIFFOpenOptionsFree)>;
+OpenOptions openOptions();
 
 // Opens a TIFF over a raw fd; size is int64_t, not long, to avoid truncating files over ~2GiB on 32-bit ABIs.
 TIFF* openFromFd(int fd, int64_t size);

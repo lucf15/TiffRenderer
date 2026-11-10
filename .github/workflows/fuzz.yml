@@ -68,7 +68,7 @@ jobs:
           path: /tmp/fuzz-artifacts/
           if-no-files-found: ignore
 
-      - name: Fail only if a crash implicates our own code, not a vendored dependency
+      - name: Fail on any crash, leak, timeout or allocation failure
         if: always()
         working-directory: lib/native/src/main/cpp
         env:
@@ -87,31 +87,11 @@ jobs:
             exit 0
           fi
 
-          hitOurCode=0
           for f in "${crashers[@]}"; do
-            echo "::group::Reproducing $(basename "$f")"
-            report=$(./build-fuzz/tiff_fuzz -timeout=30 -rss_limit_mb=4096 "$f" 2>&1) || true
-            echo "$report"
-            echo "::endgroup::"
-
-            frame=$(grep -oE '^ *#[0-9]+ 0x[0-9a-f]+ in .* [^ ]+\.(c|cc|cpp|h|hpp|hh):[0-9]+(:[0-9]+)?$' <<< "$report" | head -n1)
-            if [ -z "$frame" ]; then
-              echo "$(basename "$f"): couldn't resolve a source location for the crash, failing to be safe."
-              hitOurCode=1
-            elif grep -q 'third_party/' <<< "$frame"; then
-              echo "$(basename "$f"): crash is inside a vendored dependency, not our own code:"
-              echo "  $frame"
-            else
-              echo "$(basename "$f"): crash is inside our own code:"
-              echo "  $frame"
-              hitOurCode=1
-            fi
+            ./build-fuzz/tiff_fuzz -timeout=30 -rss_limit_mb=4096 "$f" || true
           done
-
-          if [ "$hitOurCode" -eq 1 ]; then
-            exit 1
-          fi
-          echo "Every crash found only implicates a vendored dependency; not failing CI for it."
+          echo "Fuzzing found a crash, leak, timeout or allocation failure."
+          exit 1
 
       - name: Save the fuzz corpus even if tiff_fuzz found a crasher
         if: always()

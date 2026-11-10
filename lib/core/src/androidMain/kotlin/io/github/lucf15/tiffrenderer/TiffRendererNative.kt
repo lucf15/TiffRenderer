@@ -13,7 +13,13 @@ internal object TiffRendererNative {
 
     @JvmStatic
     @Throws(IOException::class)
+    external fun nativeOpenBytes(bytes: ByteArray): Long
+
+    @JvmStatic
     external fun nativeOpen(fd: Int, size: Long): Long
+
+    @JvmStatic
+    external fun nativeSetLimits(documentPtr: Long, decoded: Long, working: Long)
 
     @JvmStatic
     external fun nativeClose(documentPtr: Long)

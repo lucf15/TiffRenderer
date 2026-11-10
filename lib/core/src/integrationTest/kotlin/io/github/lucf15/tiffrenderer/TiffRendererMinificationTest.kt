@@ -13,7 +13,7 @@ class TiffRendererMinificationTest {
             val page = renderer.openPage(0)
 
             val bitmap = createTiffBitmap(29, 29)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, renderMode = TiffSampling.SMOOTH)
 
             for (y in 0 until 29) {
                 for (x in 0 until 29) {

@@ -1,5 +1,6 @@
 @file:OptIn(kotlinx.validation.ExperimentalBCVApi::class, org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
 
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import kotlinx.validation.ApiValidationExtension
 
@@ -12,13 +13,15 @@ plugins {
 }
 
 group = "io.github.lucf15"
-version = System.getenv("VERSION") ?: "0.1.0-SNAPSHOT"
+version = System.getenv("VERSION") ?: "3.0.0-SNAPSHOT"
 
 val bcvKlibPipelineHostRecognized = System.getProperty("os.name").lowercase().contains("mac") ||
         System.getProperty("os.arch").lowercase() in setOf("x86_64", "amd64")
 if (bcvKlibPipelineHostRecognized) {
     apply(plugin = "org.jetbrains.kotlinx.binary-compatibility-validator")
 }
+
+val appleFramework = XCFramework("TiffRendererCore")
 
 kotlin {
     applyDefaultHierarchyTemplate()
@@ -52,6 +55,11 @@ kotlin {
     val nativeCore = project(":lib:native")
 
     listOf(iosArm64(), iosSimulatorArm64()).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "TiffRendererCore"
+            isStatic = true
+            appleFramework.add(this)
+        }
         val iosLibDir = nativeCore.layout.buildDirectory.dir("ios/${iosTarget.name}").get().asFile
 
         val tiffcoreCinterop = iosTarget.compilations.getByName("main").cinterops.create("tiffcore") {
@@ -63,6 +71,8 @@ kotlin {
 
         tasks.named(tiffcoreCinterop.interopProcessingTaskName) {
             dependsOn(nativeCore.tasks.named("buildTiffCoreForIos"))
+            inputs.file(iosLibDir.resolve("tiff_core.h"))
+            inputs.files(fileTree(iosLibDir) { include("*.a") })
         }
     }
 
@@ -86,6 +96,9 @@ kotlin {
         }
         wasmJsMain {
             resources.srcDir(nativeCore.layout.buildDirectory.dir("wasm"))
+            dependencies {
+                api(libs.kotlinx.browser)
+            }
         }
         wasmJsTest {
             resources.srcDir(nativeCore.layout.buildDirectory.dir("wasm"))

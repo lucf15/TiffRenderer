@@ -9,16 +9,23 @@ import kotlinx.coroutines.withContext
  * whole native decode, and `suspend` functions must be safe to call from the main thread without
  * the caller having to remember to dispatch themselves. */
 internal actual object TiffCoreBinding {
-    actual suspend fun open(source: TiffSource, dispatcher: CoroutineDispatcher): TiffCoreHandle =
-        withContext(dispatcher) {
-            TiffCoreHandle(rethrowingIOException { TiffRendererNative.nativeOpen(source.fd, source.size) })
-        }
+    actual suspend fun open(source: TiffOpenedSource, dispatcher: CoroutineDispatcher): TiffCoreHandle =
+        acquireTiffHandle(dispatcher, {
+            rethrowingIOException {
+                source.bytes?.let { TiffRendererNative.nativeOpenBytes(it) }
+                    ?: TiffRendererNative.nativeOpen(source.fd, source.size)
+            }
+        }, TiffRendererNative::nativeClose)
 
     // NonCancellable: this frees native state, so it must run even if the calling coroutine is
     // already cancelled. A plain withContext(dispatcher) throws immediately without entering the
     // block in that case, leaking the native handle.
     actual suspend fun close(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher) = withContext(dispatcher + NonCancellable) {
         handle.closeOnce { ptr -> TiffRendererNative.nativeClose(ptr) }
+    }
+
+    actual suspend fun setLimits(handle: TiffCoreHandle, limits: TiffLimits, dispatcher: CoroutineDispatcher): Unit = withContext(dispatcher) {
+        handle.use { ptr -> rethrowingIOException { TiffRendererNative.nativeSetLimits(ptr, limits.maxDecodedBytes, limits.maxWorkingBytes) } }
     }
 
     actual suspend fun getPageCount(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher): Int =
@@ -44,7 +51,7 @@ internal actual object TiffCoreBinding {
         destination: TiffBitmap,
         clip: TiffRect,
         transform: TiffTransform,
-        mode: TiffRenderMode,
+        mode: TiffSampling,
         dispatcher: CoroutineDispatcher,
     ): Boolean = withContext(dispatcher) {
         require(!destination.bitmap.isRecycled) { "TiffBitmap wraps a recycled Bitmap" }

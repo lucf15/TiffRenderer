@@ -39,6 +39,8 @@ void throwForStatus(JNIEnv* env, TiffCoreStatus status, const char* errBuf,
 
 void nativeClose(JNIEnv* env, jclass clazz, jlong documentPtr);
 
+void nativeSetLimits(JNIEnv* env, jclass clazz, jlong documentPtr, jlong decoded, jlong working);
+
 jint nativeGetPageCount(JNIEnv* env, jclass clazz, jlong documentPtr);
 
 void nativeOpenPage(JNIEnv* env, jclass clazz, jlong documentPtr, jint pageIndex,

@@ -13,17 +13,21 @@ androidxComposeBom = "2026.08.00"
 androidxTestExt = "1.3.0"
 androidxTestRunner = "1.7.0"
 composeMultiplatform = "1.12.0"
+composeUnstyled = "2.10.2"
 junit = "4.13.2"
 kotlin = "2.4.20"
 androidxAnnotation = "1.10.0"
 multiplatformNav3Ui = "1.1.1"
 kotlinxSerialization = "1.11.0"
 kotlinxCoroutines = "1.11.0"
+kotlinxBrowser = "0.5.0"
 mavenPublish = "0.37.0"
 kotlinxResources = "0.16.2"
 binaryCompatibilityValidator = "0.18.2"
 
 [libraries]
+compose-indication = { module = "com.composables:composeunstyled-colored-indication", version.ref = "composeUnstyled" }
+compose-unstyled = { module = "com.composables:composeunstyled", version.ref = "composeUnstyled" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "androidxComposeBom" }
@@ -37,6 +41,7 @@ androidx-annotation = { module = "androidx.annotation:annotation", version.ref =
 multiplatform-navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "multiplatformNav3Ui" }
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.ref = "kotlinxBrowser" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 kotlinx-resources = { module = "com.goncalossilva:resources", version.ref = "kotlinxResources" }
 

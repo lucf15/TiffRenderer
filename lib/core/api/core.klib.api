@@ -7,15 +7,50 @@
 // - Show declarations: true
 
 // Library unique name: <io.github.lucf15:core>
-final enum class io.github.lucf15.tiffrenderer/TiffRenderMode : kotlin/Enum<io.github.lucf15.tiffrenderer/TiffRenderMode> { // io.github.lucf15.tiffrenderer/TiffRenderMode|null[0]
-    enum entry FOR_DISPLAY // io.github.lucf15.tiffrenderer/TiffRenderMode.FOR_DISPLAY|null[0]
-    enum entry FOR_PRINT // io.github.lucf15.tiffrenderer/TiffRenderMode.FOR_PRINT|null[0]
+final enum class io.github.lucf15.tiffrenderer/TiffDecodePolicy : kotlin/Enum<io.github.lucf15.tiffrenderer/TiffDecodePolicy> { // io.github.lucf15.tiffrenderer/TiffDecodePolicy|null[0]
+    enum entry ALLOW_PARTIAL // io.github.lucf15.tiffrenderer/TiffDecodePolicy.ALLOW_PARTIAL|null[0]
+    enum entry STRICT // io.github.lucf15.tiffrenderer/TiffDecodePolicy.STRICT|null[0]
 
-    final val entries // io.github.lucf15.tiffrenderer/TiffRenderMode.entries|#static{}entries[0]
-        final fun <get-entries>(): kotlin.enums/EnumEntries<io.github.lucf15.tiffrenderer/TiffRenderMode> // io.github.lucf15.tiffrenderer/TiffRenderMode.entries.<get-entries>|<get-entries>#static(){}[0]
+    final val entries // io.github.lucf15.tiffrenderer/TiffDecodePolicy.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<io.github.lucf15.tiffrenderer/TiffDecodePolicy> // io.github.lucf15.tiffrenderer/TiffDecodePolicy.entries.<get-entries>|<get-entries>#static(){}[0]
 
-    final fun valueOf(kotlin/String): io.github.lucf15.tiffrenderer/TiffRenderMode // io.github.lucf15.tiffrenderer/TiffRenderMode.valueOf|valueOf#static(kotlin.String){}[0]
-    final fun values(): kotlin/Array<io.github.lucf15.tiffrenderer/TiffRenderMode> // io.github.lucf15.tiffrenderer/TiffRenderMode.values|values#static(){}[0]
+    final fun valueOf(kotlin/String): io.github.lucf15.tiffrenderer/TiffDecodePolicy // io.github.lucf15.tiffrenderer/TiffDecodePolicy.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<io.github.lucf15.tiffrenderer/TiffDecodePolicy> // io.github.lucf15.tiffrenderer/TiffDecodePolicy.values|values#static(){}[0]
+}
+
+final enum class io.github.lucf15.tiffrenderer/TiffError : kotlin/Enum<io.github.lucf15.tiffrenderer/TiffError> { // io.github.lucf15.tiffrenderer/TiffError|null[0]
+    enum entry INPUT_UNAVAILABLE // io.github.lucf15.tiffrenderer/TiffError.INPUT_UNAVAILABLE|null[0]
+    enum entry INVALID_DATA // io.github.lucf15.tiffrenderer/TiffError.INVALID_DATA|null[0]
+    enum entry PARTIAL_DECODE // io.github.lucf15.tiffrenderer/TiffError.PARTIAL_DECODE|null[0]
+    enum entry RESOURCE_LIMIT // io.github.lucf15.tiffrenderer/TiffError.RESOURCE_LIMIT|null[0]
+    enum entry WORKER_UNAVAILABLE // io.github.lucf15.tiffrenderer/TiffError.WORKER_UNAVAILABLE|null[0]
+
+    final val entries // io.github.lucf15.tiffrenderer/TiffError.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<io.github.lucf15.tiffrenderer/TiffError> // io.github.lucf15.tiffrenderer/TiffError.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): io.github.lucf15.tiffrenderer/TiffError // io.github.lucf15.tiffrenderer/TiffError.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<io.github.lucf15.tiffrenderer/TiffError> // io.github.lucf15.tiffrenderer/TiffError.values|values#static(){}[0]
+}
+
+final enum class io.github.lucf15.tiffrenderer/TiffSampling : kotlin/Enum<io.github.lucf15.tiffrenderer/TiffSampling> { // io.github.lucf15.tiffrenderer/TiffSampling|null[0]
+    enum entry NEAREST // io.github.lucf15.tiffrenderer/TiffSampling.NEAREST|null[0]
+    enum entry SMOOTH // io.github.lucf15.tiffrenderer/TiffSampling.SMOOTH|null[0]
+
+    final val entries // io.github.lucf15.tiffrenderer/TiffSampling.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<io.github.lucf15.tiffrenderer/TiffSampling> // io.github.lucf15.tiffrenderer/TiffSampling.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): io.github.lucf15.tiffrenderer/TiffSampling // io.github.lucf15.tiffrenderer/TiffSampling.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<io.github.lucf15.tiffrenderer/TiffSampling> // io.github.lucf15.tiffrenderer/TiffSampling.values|values#static(){}[0]
+}
+
+final enum class io.github.lucf15.tiffrenderer/TiffWarning : kotlin/Enum<io.github.lucf15.tiffrenderer/TiffWarning> { // io.github.lucf15.tiffrenderer/TiffWarning|null[0]
+    enum entry PARTIAL_DECODE // io.github.lucf15.tiffrenderer/TiffWarning.PARTIAL_DECODE|null[0]
+
+    final val entries // io.github.lucf15.tiffrenderer/TiffWarning.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<io.github.lucf15.tiffrenderer/TiffWarning> // io.github.lucf15.tiffrenderer/TiffWarning.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): io.github.lucf15.tiffrenderer/TiffWarning // io.github.lucf15.tiffrenderer/TiffWarning.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<io.github.lucf15.tiffrenderer/TiffWarning> // io.github.lucf15.tiffrenderer/TiffWarning.values|values#static(){}[0]
 }
 
 final class io.github.lucf15.tiffrenderer/TiffBitmap { // io.github.lucf15.tiffrenderer/TiffBitmap|null[0]
@@ -25,23 +60,79 @@ final class io.github.lucf15.tiffrenderer/TiffBitmap { // io.github.lucf15.tiffr
         final fun <get-height>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffBitmap.height.<get-height>|<get-height>(){}[0]
     final val width // io.github.lucf15.tiffrenderer/TiffBitmap.width|{}width[0]
         final fun <get-width>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffBitmap.width.<get-width>|<get-width>(){}[0]
+
+    final object Companion { // io.github.lucf15.tiffrenderer/TiffBitmap.Companion|null[0]
+        final fun create(kotlin/Int, kotlin/Int): io.github.lucf15.tiffrenderer/TiffBitmap // io.github.lucf15.tiffrenderer/TiffBitmap.Companion.create|create(kotlin.Int;kotlin.Int){}[0]
+    }
 }
 
 final class io.github.lucf15.tiffrenderer/TiffIOException : kotlin/RuntimeException { // io.github.lucf15.tiffrenderer/TiffIOException|null[0]
-    constructor <init>(kotlin/String) // io.github.lucf15.tiffrenderer/TiffIOException.<init>|<init>(kotlin.String){}[0]
+    constructor <init>(kotlin/String, io.github.lucf15.tiffrenderer/TiffError = ..., kotlin/Throwable? = ...) // io.github.lucf15.tiffrenderer/TiffIOException.<init>|<init>(kotlin.String;io.github.lucf15.tiffrenderer.TiffError;kotlin.Throwable?){}[0]
+
+    final val reason // io.github.lucf15.tiffrenderer/TiffIOException.reason|{}reason[0]
+        final fun <get-reason>(): io.github.lucf15.tiffrenderer/TiffError // io.github.lucf15.tiffrenderer/TiffIOException.reason.<get-reason>|<get-reason>(){}[0]
 }
 
-final class io.github.lucf15.tiffrenderer/TiffPage { // io.github.lucf15.tiffrenderer/TiffPage|null[0]
-    final val height // io.github.lucf15.tiffrenderer/TiffPage.height|{}height[0]
-        final fun <get-height>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPage.height.<get-height>|<get-height>(){}[0]
-    final val index // io.github.lucf15.tiffrenderer/TiffPage.index|{}index[0]
-        final fun <get-index>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPage.index.<get-index>|<get-index>(){}[0]
-    final val width // io.github.lucf15.tiffrenderer/TiffPage.width|{}width[0]
-        final fun <get-width>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPage.width.<get-width>|<get-width>(){}[0]
+final class io.github.lucf15.tiffrenderer/TiffLimits { // io.github.lucf15.tiffrenderer/TiffLimits|null[0]
+    constructor <init>(kotlin/Long = ..., kotlin/Long = ..., kotlin/Long = ..., kotlin/Long = ...) // io.github.lucf15.tiffrenderer/TiffLimits.<init>|<init>(kotlin.Long;kotlin.Long;kotlin.Long;kotlin.Long){}[0]
 
-    final suspend fun close() // io.github.lucf15.tiffrenderer/TiffPage.close|close(){}[0]
-    final suspend fun render(io.github.lucf15.tiffrenderer/TiffBitmap, io.github.lucf15.tiffrenderer/TiffRect? = ..., io.github.lucf15.tiffrenderer/TiffTransform? = ..., io.github.lucf15.tiffrenderer/TiffRenderMode = ..., kotlin/Function0<kotlin/Unit>? = ...) // io.github.lucf15.tiffrenderer/TiffPage.render|render(io.github.lucf15.tiffrenderer.TiffBitmap;io.github.lucf15.tiffrenderer.TiffRect?;io.github.lucf15.tiffrenderer.TiffTransform?;io.github.lucf15.tiffrenderer.TiffRenderMode;kotlin.Function0<kotlin.Unit>?){}[0]
-    final suspend fun retainRaster(kotlin/Function0<kotlin/Unit>? = ...) // io.github.lucf15.tiffrenderer/TiffPage.retainRaster|retainRaster(kotlin.Function0<kotlin.Unit>?){}[0]
+    final val maxDecodedBytes // io.github.lucf15.tiffrenderer/TiffLimits.maxDecodedBytes|{}maxDecodedBytes[0]
+        final fun <get-maxDecodedBytes>(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.maxDecodedBytes.<get-maxDecodedBytes>|<get-maxDecodedBytes>(){}[0]
+    final val maxInputBytes // io.github.lucf15.tiffrenderer/TiffLimits.maxInputBytes|{}maxInputBytes[0]
+        final fun <get-maxInputBytes>(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.maxInputBytes.<get-maxInputBytes>|<get-maxInputBytes>(){}[0]
+    final val maxOutputBytes // io.github.lucf15.tiffrenderer/TiffLimits.maxOutputBytes|{}maxOutputBytes[0]
+        final fun <get-maxOutputBytes>(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.maxOutputBytes.<get-maxOutputBytes>|<get-maxOutputBytes>(){}[0]
+    final val maxWorkingBytes // io.github.lucf15.tiffrenderer/TiffLimits.maxWorkingBytes|{}maxWorkingBytes[0]
+        final fun <get-maxWorkingBytes>(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.maxWorkingBytes.<get-maxWorkingBytes>|<get-maxWorkingBytes>(){}[0]
+
+    final fun component1(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.component1|component1(){}[0]
+    final fun component2(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.component2|component2(){}[0]
+    final fun component3(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.component3|component3(){}[0]
+    final fun component4(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffLimits.component4|component4(){}[0]
+    final fun copy(kotlin/Long = ..., kotlin/Long = ..., kotlin/Long = ..., kotlin/Long = ...): io.github.lucf15.tiffrenderer/TiffLimits // io.github.lucf15.tiffrenderer/TiffLimits.copy|copy(kotlin.Long;kotlin.Long;kotlin.Long;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // io.github.lucf15.tiffrenderer/TiffLimits.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffLimits.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // io.github.lucf15.tiffrenderer/TiffLimits.toString|toString(){}[0]
+}
+
+final class io.github.lucf15.tiffrenderer/TiffOptions { // io.github.lucf15.tiffrenderer/TiffOptions|null[0]
+    constructor <init>(io.github.lucf15.tiffrenderer/TiffLimits = ..., io.github.lucf15.tiffrenderer/TiffDecodePolicy = ..., kotlin/Long = ...) // io.github.lucf15.tiffrenderer/TiffOptions.<init>|<init>(io.github.lucf15.tiffrenderer.TiffLimits;io.github.lucf15.tiffrenderer.TiffDecodePolicy;kotlin.Long){}[0]
+
+    final val cacheBytes // io.github.lucf15.tiffrenderer/TiffOptions.cacheBytes|{}cacheBytes[0]
+        final fun <get-cacheBytes>(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffOptions.cacheBytes.<get-cacheBytes>|<get-cacheBytes>(){}[0]
+    final val decodePolicy // io.github.lucf15.tiffrenderer/TiffOptions.decodePolicy|{}decodePolicy[0]
+        final fun <get-decodePolicy>(): io.github.lucf15.tiffrenderer/TiffDecodePolicy // io.github.lucf15.tiffrenderer/TiffOptions.decodePolicy.<get-decodePolicy>|<get-decodePolicy>(){}[0]
+    final val limits // io.github.lucf15.tiffrenderer/TiffOptions.limits|{}limits[0]
+        final fun <get-limits>(): io.github.lucf15.tiffrenderer/TiffLimits // io.github.lucf15.tiffrenderer/TiffOptions.limits.<get-limits>|<get-limits>(){}[0]
+
+    final fun component1(): io.github.lucf15.tiffrenderer/TiffLimits // io.github.lucf15.tiffrenderer/TiffOptions.component1|component1(){}[0]
+    final fun component2(): io.github.lucf15.tiffrenderer/TiffDecodePolicy // io.github.lucf15.tiffrenderer/TiffOptions.component2|component2(){}[0]
+    final fun component3(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffOptions.component3|component3(){}[0]
+    final fun copy(io.github.lucf15.tiffrenderer/TiffLimits = ..., io.github.lucf15.tiffrenderer/TiffDecodePolicy = ..., kotlin/Long = ...): io.github.lucf15.tiffrenderer/TiffOptions // io.github.lucf15.tiffrenderer/TiffOptions.copy|copy(io.github.lucf15.tiffrenderer.TiffLimits;io.github.lucf15.tiffrenderer.TiffDecodePolicy;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // io.github.lucf15.tiffrenderer/TiffOptions.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffOptions.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // io.github.lucf15.tiffrenderer/TiffOptions.toString|toString(){}[0]
+}
+
+final class io.github.lucf15.tiffrenderer/TiffPageInfo { // io.github.lucf15.tiffrenderer/TiffPageInfo|null[0]
+    constructor <init>(kotlin/Int, kotlin/Int, kotlin/Int) // io.github.lucf15.tiffrenderer/TiffPageInfo.<init>|<init>(kotlin.Int;kotlin.Int;kotlin.Int){}[0]
+
+    final val height // io.github.lucf15.tiffrenderer/TiffPageInfo.height|{}height[0]
+        final fun <get-height>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPageInfo.height.<get-height>|<get-height>(){}[0]
+    final val index // io.github.lucf15.tiffrenderer/TiffPageInfo.index|{}index[0]
+        final fun <get-index>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPageInfo.index.<get-index>|<get-index>(){}[0]
+    final val rasterBytes // io.github.lucf15.tiffrenderer/TiffPageInfo.rasterBytes|{}rasterBytes[0]
+        final fun <get-rasterBytes>(): kotlin/Long // io.github.lucf15.tiffrenderer/TiffPageInfo.rasterBytes.<get-rasterBytes>|<get-rasterBytes>(){}[0]
+    final val width // io.github.lucf15.tiffrenderer/TiffPageInfo.width|{}width[0]
+        final fun <get-width>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPageInfo.width.<get-width>|<get-width>(){}[0]
+
+    final fun component1(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPageInfo.component1|component1(){}[0]
+    final fun component2(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPageInfo.component2|component2(){}[0]
+    final fun component3(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPageInfo.component3|component3(){}[0]
+    final fun copy(kotlin/Int = ..., kotlin/Int = ..., kotlin/Int = ...): io.github.lucf15.tiffrenderer/TiffPageInfo // io.github.lucf15.tiffrenderer/TiffPageInfo.copy|copy(kotlin.Int;kotlin.Int;kotlin.Int){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // io.github.lucf15.tiffrenderer/TiffPageInfo.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffPageInfo.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // io.github.lucf15.tiffrenderer/TiffPageInfo.toString|toString(){}[0]
 }
 
 final class io.github.lucf15.tiffrenderer/TiffRect { // io.github.lucf15.tiffrenderer/TiffRect|null[0]
@@ -61,25 +152,49 @@ final class io.github.lucf15.tiffrenderer/TiffRect { // io.github.lucf15.tiffren
         final fun <get-width>(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffRect.width.<get-width>|<get-width>(){}[0]
 }
 
+final class io.github.lucf15.tiffrenderer/TiffRenderResult { // io.github.lucf15.tiffrenderer/TiffRenderResult|null[0]
+    constructor <init>(io.github.lucf15.tiffrenderer/TiffBitmap, kotlin.collections/Set<io.github.lucf15.tiffrenderer/TiffWarning>) // io.github.lucf15.tiffrenderer/TiffRenderResult.<init>|<init>(io.github.lucf15.tiffrenderer.TiffBitmap;kotlin.collections.Set<io.github.lucf15.tiffrenderer.TiffWarning>){}[0]
+
+    final val image // io.github.lucf15.tiffrenderer/TiffRenderResult.image|{}image[0]
+        final fun <get-image>(): io.github.lucf15.tiffrenderer/TiffBitmap // io.github.lucf15.tiffrenderer/TiffRenderResult.image.<get-image>|<get-image>(){}[0]
+    final val warnings // io.github.lucf15.tiffrenderer/TiffRenderResult.warnings|{}warnings[0]
+        final fun <get-warnings>(): kotlin.collections/Set<io.github.lucf15.tiffrenderer/TiffWarning> // io.github.lucf15.tiffrenderer/TiffRenderResult.warnings.<get-warnings>|<get-warnings>(){}[0]
+
+    final fun component1(): io.github.lucf15.tiffrenderer/TiffBitmap // io.github.lucf15.tiffrenderer/TiffRenderResult.component1|component1(){}[0]
+    final fun component2(): kotlin.collections/Set<io.github.lucf15.tiffrenderer/TiffWarning> // io.github.lucf15.tiffrenderer/TiffRenderResult.component2|component2(){}[0]
+    final fun copy(io.github.lucf15.tiffrenderer/TiffBitmap = ..., kotlin.collections/Set<io.github.lucf15.tiffrenderer/TiffWarning> = ...): io.github.lucf15.tiffrenderer/TiffRenderResult // io.github.lucf15.tiffrenderer/TiffRenderResult.copy|copy(io.github.lucf15.tiffrenderer.TiffBitmap;kotlin.collections.Set<io.github.lucf15.tiffrenderer.TiffWarning>){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // io.github.lucf15.tiffrenderer/TiffRenderResult.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffRenderResult.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // io.github.lucf15.tiffrenderer/TiffRenderResult.toString|toString(){}[0]
+}
+
 final class io.github.lucf15.tiffrenderer/TiffRenderer { // io.github.lucf15.tiffrenderer/TiffRenderer|null[0]
     final suspend fun close() // io.github.lucf15.tiffrenderer/TiffRenderer.close|close(){}[0]
-    final suspend fun openPage(kotlin/Int): io.github.lucf15.tiffrenderer/TiffPage // io.github.lucf15.tiffrenderer/TiffRenderer.openPage|openPage(kotlin.Int){}[0]
     final suspend fun pageCount(): kotlin/Int // io.github.lucf15.tiffrenderer/TiffRenderer.pageCount|pageCount(){}[0]
+    final suspend fun pageInfo(kotlin/Int): io.github.lucf15.tiffrenderer/TiffPageInfo // io.github.lucf15.tiffrenderer/TiffRenderer.pageInfo|pageInfo(kotlin.Int){}[0]
+    final suspend fun renderInto(kotlin/Int, io.github.lucf15.tiffrenderer/TiffBitmap, io.github.lucf15.tiffrenderer/TiffRect? = ..., io.github.lucf15.tiffrenderer/TiffTransform? = ..., io.github.lucf15.tiffrenderer/TiffSampling = ...): kotlin.collections/Set<io.github.lucf15.tiffrenderer/TiffWarning> // io.github.lucf15.tiffrenderer/TiffRenderer.renderInto|renderInto(kotlin.Int;io.github.lucf15.tiffrenderer.TiffBitmap;io.github.lucf15.tiffrenderer.TiffRect?;io.github.lucf15.tiffrenderer.TiffTransform?;io.github.lucf15.tiffrenderer.TiffSampling){}[0]
+    final suspend fun renderPage(kotlin/Int, io.github.lucf15.tiffrenderer/RenderSize, io.github.lucf15.tiffrenderer/TiffSampling = ...): io.github.lucf15.tiffrenderer/TiffRenderResult // io.github.lucf15.tiffrenderer/TiffRenderer.renderPage|renderPage(kotlin.Int;io.github.lucf15.tiffrenderer.RenderSize;io.github.lucf15.tiffrenderer.TiffSampling){}[0]
+    final suspend fun trimCache() // io.github.lucf15.tiffrenderer/TiffRenderer.trimCache|trimCache(){}[0]
 
     final object Companion { // io.github.lucf15.tiffrenderer/TiffRenderer.Companion|null[0]
-        final suspend fun open(io.github.lucf15.tiffrenderer/TiffSource, kotlinx.coroutines/CoroutineDispatcher = ...): io.github.lucf15.tiffrenderer/TiffRenderer // io.github.lucf15.tiffrenderer/TiffRenderer.Companion.open|open(io.github.lucf15.tiffrenderer.TiffSource;kotlinx.coroutines.CoroutineDispatcher){}[0]
+        final suspend fun <#A2: kotlin/Any?> withDocument(io.github.lucf15.tiffrenderer/TiffSource, io.github.lucf15.tiffrenderer/TiffOptions = ..., kotlin.coroutines/SuspendFunction1<io.github.lucf15.tiffrenderer/TiffRenderer, #A2>): #A2 // io.github.lucf15.tiffrenderer/TiffRenderer.Companion.withDocument|withDocument(io.github.lucf15.tiffrenderer.TiffSource;io.github.lucf15.tiffrenderer.TiffOptions;kotlin.coroutines.SuspendFunction1<io.github.lucf15.tiffrenderer.TiffRenderer,0:0>){0§<kotlin.Any?>}[0]
+        final suspend fun open(io.github.lucf15.tiffrenderer/TiffSource, io.github.lucf15.tiffrenderer/TiffOptions = ...): io.github.lucf15.tiffrenderer/TiffRenderer // io.github.lucf15.tiffrenderer/TiffRenderer.Companion.open|open(io.github.lucf15.tiffrenderer.TiffSource;io.github.lucf15.tiffrenderer.TiffOptions){}[0]
+        final suspend fun render(io.github.lucf15.tiffrenderer/TiffSource, kotlin/Int, io.github.lucf15.tiffrenderer/RenderSize, io.github.lucf15.tiffrenderer/TiffOptions = ...): io.github.lucf15.tiffrenderer/TiffRenderResult // io.github.lucf15.tiffrenderer/TiffRenderer.Companion.render|render(io.github.lucf15.tiffrenderer.TiffSource;kotlin.Int;io.github.lucf15.tiffrenderer.RenderSize;io.github.lucf15.tiffrenderer.TiffOptions){}[0]
     }
 }
 
 final class io.github.lucf15.tiffrenderer/TiffSource { // io.github.lucf15.tiffrenderer/TiffSource|null[0]
-    final fun release() // io.github.lucf15.tiffrenderer/TiffSource.release|release(){}[0]
-
     final object Companion { // io.github.lucf15.tiffrenderer/TiffSource.Companion|null[0]
+        final fun fromByteArray(kotlin/ByteArray): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromByteArray|fromByteArray(kotlin.ByteArray){}[0]
+
         // Targets: [ios]
-        final fun fromFileDescriptor(kotlin/Int, kotlin/Long): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromFileDescriptor|fromFileDescriptor(kotlin.Int;kotlin.Long){}[0]
+        final fun fromPath(kotlin/String): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromPath|fromPath(kotlin.String){}[0]
+
+        // Targets: [ios]
+        final fun fromUrl(platform.Foundation/NSURL): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromUrl|fromUrl(platform.Foundation.NSURL){}[0]
 
         // Targets: [wasmJs]
-        final fun fromByteArray(kotlin/ByteArray): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromByteArray|fromByteArray(kotlin.ByteArray){}[0]
+        final fun fromBlob(org.w3c.files/Blob): io.github.lucf15.tiffrenderer/TiffSource // io.github.lucf15.tiffrenderer/TiffSource.Companion.fromBlob|fromBlob(org.w3c.files.Blob){}[0]
     }
 }
 
@@ -88,12 +203,74 @@ final class io.github.lucf15.tiffrenderer/TiffTransform { // io.github.lucf15.ti
 
     final val values // io.github.lucf15.tiffrenderer/TiffTransform.values|{}values[0]
         final fun <get-values>(): kotlin/FloatArray // io.github.lucf15.tiffrenderer/TiffTransform.values.<get-values>|<get-values>(){}[0]
+
+    final object Companion { // io.github.lucf15.tiffrenderer/TiffTransform.Companion|null[0]
+        final fun identity(): io.github.lucf15.tiffrenderer/TiffTransform // io.github.lucf15.tiffrenderer/TiffTransform.Companion.identity|identity(){}[0]
+        final fun rotate(kotlin/Float): io.github.lucf15.tiffrenderer/TiffTransform // io.github.lucf15.tiffrenderer/TiffTransform.Companion.rotate|rotate(kotlin.Float){}[0]
+        final fun scale(kotlin/Float, kotlin/Float = ...): io.github.lucf15.tiffrenderer/TiffTransform // io.github.lucf15.tiffrenderer/TiffTransform.Companion.scale|scale(kotlin.Float;kotlin.Float){}[0]
+        final fun translate(kotlin/Float, kotlin/Float): io.github.lucf15.tiffrenderer/TiffTransform // io.github.lucf15.tiffrenderer/TiffTransform.Companion.translate|translate(kotlin.Float;kotlin.Float){}[0]
+    }
 }
 
-final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/toByteArray(): kotlin/ByteArray // io.github.lucf15.tiffrenderer/toByteArray|toByteArray@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]
-final fun io.github.lucf15.tiffrenderer/createTiffBitmap(kotlin/Int, kotlin/Int): io.github.lucf15.tiffrenderer/TiffBitmap // io.github.lucf15.tiffrenderer/createTiffBitmap|createTiffBitmap(kotlin.Int;kotlin.Int){}[0]
-final suspend inline fun <#A: kotlin/Any?> (io.github.lucf15.tiffrenderer/TiffPage).io.github.lucf15.tiffrenderer/use(kotlin.coroutines/SuspendFunction1<io.github.lucf15.tiffrenderer/TiffPage, #A>): #A // io.github.lucf15.tiffrenderer/use|use@io.github.lucf15.tiffrenderer.TiffPage(kotlin.coroutines.SuspendFunction1<io.github.lucf15.tiffrenderer.TiffPage,0:0>){0§<kotlin.Any?>}[0]
+sealed class io.github.lucf15.tiffrenderer/RenderSize { // io.github.lucf15.tiffrenderer/RenderSize|null[0]
+    final class Fit : io.github.lucf15.tiffrenderer/RenderSize { // io.github.lucf15.tiffrenderer/RenderSize.Fit|null[0]
+        constructor <init>(kotlin/Int, kotlin/Int, kotlin/Boolean = ...) // io.github.lucf15.tiffrenderer/RenderSize.Fit.<init>|<init>(kotlin.Int;kotlin.Int;kotlin.Boolean){}[0]
+
+        final val allowUpscale // io.github.lucf15.tiffrenderer/RenderSize.Fit.allowUpscale|{}allowUpscale[0]
+            final fun <get-allowUpscale>(): kotlin/Boolean // io.github.lucf15.tiffrenderer/RenderSize.Fit.allowUpscale.<get-allowUpscale>|<get-allowUpscale>(){}[0]
+        final val maxHeight // io.github.lucf15.tiffrenderer/RenderSize.Fit.maxHeight|{}maxHeight[0]
+            final fun <get-maxHeight>(): kotlin/Int // io.github.lucf15.tiffrenderer/RenderSize.Fit.maxHeight.<get-maxHeight>|<get-maxHeight>(){}[0]
+        final val maxWidth // io.github.lucf15.tiffrenderer/RenderSize.Fit.maxWidth|{}maxWidth[0]
+            final fun <get-maxWidth>(): kotlin/Int // io.github.lucf15.tiffrenderer/RenderSize.Fit.maxWidth.<get-maxWidth>|<get-maxWidth>(){}[0]
+
+        final fun component1(): kotlin/Int // io.github.lucf15.tiffrenderer/RenderSize.Fit.component1|component1(){}[0]
+        final fun component2(): kotlin/Int // io.github.lucf15.tiffrenderer/RenderSize.Fit.component2|component2(){}[0]
+        final fun component3(): kotlin/Boolean // io.github.lucf15.tiffrenderer/RenderSize.Fit.component3|component3(){}[0]
+        final fun copy(kotlin/Int = ..., kotlin/Int = ..., kotlin/Boolean = ...): io.github.lucf15.tiffrenderer/RenderSize.Fit // io.github.lucf15.tiffrenderer/RenderSize.Fit.copy|copy(kotlin.Int;kotlin.Int;kotlin.Boolean){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // io.github.lucf15.tiffrenderer/RenderSize.Fit.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // io.github.lucf15.tiffrenderer/RenderSize.Fit.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // io.github.lucf15.tiffrenderer/RenderSize.Fit.toString|toString(){}[0]
+    }
+
+    final object Companion { // io.github.lucf15.tiffrenderer/RenderSize.Companion|null[0]
+        final fun fit(kotlin/Int, kotlin/Int, kotlin/Boolean = ...): io.github.lucf15.tiffrenderer/RenderSize // io.github.lucf15.tiffrenderer/RenderSize.Companion.fit|fit(kotlin.Int;kotlin.Int;kotlin.Boolean){}[0]
+    }
+
+    final object Original : io.github.lucf15.tiffrenderer/RenderSize { // io.github.lucf15.tiffrenderer/RenderSize.Original|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // io.github.lucf15.tiffrenderer/RenderSize.Original.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // io.github.lucf15.tiffrenderer/RenderSize.Original.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // io.github.lucf15.tiffrenderer/RenderSize.Original.toString|toString(){}[0]
+    }
+}
+
+final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/copyPixels(): kotlin/ByteArray // io.github.lucf15.tiffrenderer/copyPixels|copyPixels@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]
 final suspend inline fun <#A: kotlin/Any?> (io.github.lucf15.tiffrenderer/TiffRenderer).io.github.lucf15.tiffrenderer/use(kotlin.coroutines/SuspendFunction1<io.github.lucf15.tiffrenderer/TiffRenderer, #A>): #A // io.github.lucf15.tiffrenderer/use|use@io.github.lucf15.tiffrenderer.TiffRenderer(kotlin.coroutines.SuspendFunction1<io.github.lucf15.tiffrenderer.TiffRenderer,0:0>){0§<kotlin.Any?>}[0]
 
 // Targets: [ios]
+final class io.github.lucf15.tiffrenderer/AppleTiffRenderRequest { // io.github.lucf15.tiffrenderer/AppleTiffRenderRequest|null[0]
+    final fun cancel() // io.github.lucf15.tiffrenderer/AppleTiffRenderRequest.cancel|cancel(){}[0]
+    final suspend fun awaitImage(): platform.UIKit/UIImage // io.github.lucf15.tiffrenderer/AppleTiffRenderRequest.awaitImage|awaitImage(){}[0]
+}
+
+// Targets: [ios]
+final class io.github.lucf15.tiffrenderer/AppleTiffRenderer { // io.github.lucf15.tiffrenderer/AppleTiffRenderer|null[0]
+    final object Companion { // io.github.lucf15.tiffrenderer/AppleTiffRenderer.Companion|null[0]
+        final fun request(platform.Foundation/NSURL, kotlin/Int, kotlin/Int, kotlin/Int): io.github.lucf15.tiffrenderer/AppleTiffRenderRequest // io.github.lucf15.tiffrenderer/AppleTiffRenderer.Companion.request|request(platform.Foundation.NSURL;kotlin.Int;kotlin.Int;kotlin.Int){}[0]
+        final suspend fun render(platform.Foundation/NSURL, kotlin/Int, kotlin/Int, kotlin/Int): platform.UIKit/UIImage // io.github.lucf15.tiffrenderer/AppleTiffRenderer.Companion.render|render(platform.Foundation.NSURL;kotlin.Int;kotlin.Int;kotlin.Int){}[0]
+    }
+}
+
+// Targets: [ios]
 final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/toIntArray(): kotlin/IntArray // io.github.lucf15.tiffrenderer/toIntArray|toIntArray@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]
+
+// Targets: [ios]
+final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/toUIImage(): platform.UIKit/UIImage // io.github.lucf15.tiffrenderer/toUIImage|toUIImage@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]
+
+// Targets: [ios]
+final suspend fun (io.github.lucf15.tiffrenderer/TiffRenderer.Companion).io.github.lucf15.tiffrenderer/open(platform.Foundation/NSURL, io.github.lucf15.tiffrenderer/TiffOptions = ...): io.github.lucf15.tiffrenderer/TiffRenderer // io.github.lucf15.tiffrenderer/open|open@io.github.lucf15.tiffrenderer.TiffRenderer.Companion(platform.Foundation.NSURL;io.github.lucf15.tiffrenderer.TiffOptions){}[0]
+
+// Targets: [wasmJs]
+final fun (io.github.lucf15.tiffrenderer/TiffBitmap).io.github.lucf15.tiffrenderer/asArrayBuffer(): org.khronos.webgl/ArrayBuffer // io.github.lucf15.tiffrenderer/asArrayBuffer|asArrayBuffer@io.github.lucf15.tiffrenderer.TiffBitmap(){}[0]
+
+// Targets: [wasmJs]
+final suspend fun (io.github.lucf15.tiffrenderer/TiffRenderer.Companion).io.github.lucf15.tiffrenderer/open(org.w3c.files/Blob, io.github.lucf15.tiffrenderer/TiffOptions = ...): io.github.lucf15.tiffrenderer/TiffRenderer // io.github.lucf15.tiffrenderer/open|open@io.github.lucf15.tiffrenderer.TiffRenderer.Companion(org.w3c.files.Blob;io.github.lucf15.tiffrenderer.TiffOptions){}[0]

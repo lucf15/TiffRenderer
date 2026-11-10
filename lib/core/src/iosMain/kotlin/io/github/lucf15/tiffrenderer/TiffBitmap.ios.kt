@@ -1,6 +1,12 @@
 package io.github.lucf15.tiffrenderer
 
 public actual class TiffBitmap(public actual val width: Int, public actual val height: Int) {
+    public actual companion object {
+        public actual fun create(width: Int, height: Int): TiffBitmap = createTiffBitmap(width, height)
+    }
+
+    internal actual val renderMutex = kotlinx.coroutines.sync.Mutex()
+
     init {
         requirePositiveNonOverflowingBitmapDimensions(width, height)
     }
@@ -12,13 +18,13 @@ public actual class TiffBitmap(public actual val width: Int, public actual val h
 
 /** Escape hatch for UI-layer code that wants the rendered pixels as packed ARGB ints (this
  * library's own [pixelAt] convention), as a copy so callers can't corrupt a page mid-render by
- * holding onto it. Prefer [toByteArray] when raw RGBA8888 bytes suffice: this repacks per pixel. */
+ * holding onto it. Prefer [copyPixels] when raw RGBA8888 bytes suffice: this repacks per pixel. */
 public fun TiffBitmap.toIntArray(): IntArray = IntArray(pixels.size) { i -> packArgbFromRgbaPackedInt(pixels[i]) }
 
 /** Escape hatch for UI-layer code that wants the raw RGBA8888 bytes: [pixels] is already stored
  * in that exact byte order (`r | g<<8 | b<<16 | a<<24` reads back as R,G,B,A on a little-endian
  * device), so this is a direct reinterpretation, not a repack. */
-public fun TiffBitmap.toByteArray(): ByteArray {
+public actual fun TiffBitmap.copyPixels(): ByteArray {
     val bytes = ByteArray(pixels.size * 4)
     for (i in pixels.indices) {
         val p = pixels[i]
@@ -30,6 +36,6 @@ public fun TiffBitmap.toByteArray(): ByteArray {
     return bytes
 }
 
-public actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
+internal actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
 
 internal actual fun TiffBitmap.pixelAt(x: Int, y: Int): Int = packArgbFromRgbaPackedInt(pixels[y * width + x])

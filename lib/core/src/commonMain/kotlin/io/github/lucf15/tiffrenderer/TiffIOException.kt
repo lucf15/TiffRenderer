@@ -1,5 +1,9 @@
 package io.github.lucf15.tiffrenderer
 
-/** Thrown when a page's codec isn't supported by this build, or the TIFF data is corrupt or
- * truncated. Kotlin has no common `IOException`, so native-decode failures translate to this. */
-public class TiffIOException(message: String) : RuntimeException(message)
+public enum class TiffError { INVALID_DATA, RESOURCE_LIMIT, PARTIAL_DECODE, INPUT_UNAVAILABLE, WORKER_UNAVAILABLE }
+
+public class TiffIOException(
+    message: String,
+    public val reason: TiffError = TiffError.INVALID_DATA,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

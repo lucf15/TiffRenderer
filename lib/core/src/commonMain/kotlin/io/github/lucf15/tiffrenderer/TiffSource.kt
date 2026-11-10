@@ -1,16 +1,21 @@
 package io.github.lucf15.tiffrenderer
 
-/** A seekable input to open with [TiffRenderer]; opaque here since its backing (a fd on
- * Android/iOS, a file path on JVM) is platform-specific. Single-use: reusing an already-consumed
- * instance throws [IllegalStateException]. */
+/** A reusable input description; each renderer acquires and owns its own resources. */
 public expect class TiffSource {
-    /** Called by [TiffRenderer] on construction, rejecting a second [TiffRenderer] over the same
-     * source instead of reusing a possibly-already-closed fd. Compare-and-set: `true` only for
-     * the caller that wins a race with another [TiffRenderer] over the same source. */
-    internal fun markConsumed(): Boolean
+    internal fun acquire(): TiffOpenedSource
 
-    /** Releases the platform resource this source owns, if any. Idempotent, and safe to call
-     * directly if this instance is never handed to a [TiffRenderer] (e.g. a fd-backed source
-     * constructed but then discarded) — otherwise called once by [TiffRenderer]'s close path. */
-    public fun release()
+    public companion object {
+        /** Takes an independent snapshot; prefer platform file inputs for large documents. */
+        public fun fromByteArray(bytes: ByteArray): TiffSource
+    }
+}
+
+internal expect class TiffOpenedSource {
+    val size: Long
+    val inMemory: Boolean
+    fun close()
+}
+
+internal fun requireTiffInputSize(size: Long) {
+    if (size < 0 || size > 256L * 1024 * 1024) throw TiffIOException("Input exceeds native limit", TiffError.RESOURCE_LIMIT)
 }

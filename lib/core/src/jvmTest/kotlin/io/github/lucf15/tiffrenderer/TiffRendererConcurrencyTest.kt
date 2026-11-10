@@ -31,7 +31,7 @@ class TiffRendererConcurrencyTest {
                     repeat(25) {
                         runBlocking {
                             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
-                            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                            page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                             if (bitmap.pixelAt(0, 0) != PAGE_COLOR ||
                                 bitmap.pixelAt(PAGE_WIDTH - 1, PAGE_HEIGHT - 1) != PAGE_COLOR
                             ) {
@@ -60,7 +60,7 @@ class TiffRendererConcurrencyTest {
                         repeat(20) {
                             val page = renderer.openPage(0)
                             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
-                            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                            page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                             if (bitmap.pixelAt(0, 0) != PAGE_COLOR) {
                                 failures += "thread $threadIndex saw corrupted pixel data"
                             }

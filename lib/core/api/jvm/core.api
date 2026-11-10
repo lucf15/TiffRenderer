@@ -1,39 +1,163 @@
+public final class io/github/lucf15/tiffrenderer/BlockingTiffRenderer : java/lang/AutoCloseable {
+	public static final field Companion Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer$Companion;
+	public synthetic fun <init> (Lio/github/lucf15/tiffrenderer/TiffRenderer;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public static final fun open (Ljava/nio/file/Path;)Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer;
+	public static final fun open (Ljava/nio/file/Path;Lio/github/lucf15/tiffrenderer/TiffOptions;)Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer;
+	public final fun pageCount ()I
+	public final fun pageInfo (I)Lio/github/lucf15/tiffrenderer/TiffPageInfo;
+	public final fun renderImage (II)Ljava/awt/image/BufferedImage;
+	public final fun renderImage (III)Ljava/awt/image/BufferedImage;
+	public static synthetic fun renderImage$default (Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer;IIIILjava/lang/Object;)Ljava/awt/image/BufferedImage;
+	public final fun renderPage (ILio/github/lucf15/tiffrenderer/RenderSize;)Lio/github/lucf15/tiffrenderer/TiffRenderResult;
+}
+
+public final class io/github/lucf15/tiffrenderer/BlockingTiffRenderer$Companion {
+	public final fun open (Ljava/nio/file/Path;)Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer;
+	public final fun open (Ljava/nio/file/Path;Lio/github/lucf15/tiffrenderer/TiffOptions;)Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer;
+	public static synthetic fun open$default (Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer$Companion;Ljava/nio/file/Path;Lio/github/lucf15/tiffrenderer/TiffOptions;ILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/BlockingTiffRenderer;
+}
+
+public abstract class io/github/lucf15/tiffrenderer/RenderSize {
+	public static final field Companion Lio/github/lucf15/tiffrenderer/RenderSize$Companion;
+	public static final fun fit (II)Lio/github/lucf15/tiffrenderer/RenderSize;
+	public static final fun fit (IIZ)Lio/github/lucf15/tiffrenderer/RenderSize;
+}
+
+public final class io/github/lucf15/tiffrenderer/RenderSize$Companion {
+	public final fun fit (II)Lio/github/lucf15/tiffrenderer/RenderSize;
+	public final fun fit (IIZ)Lio/github/lucf15/tiffrenderer/RenderSize;
+	public static synthetic fun fit$default (Lio/github/lucf15/tiffrenderer/RenderSize$Companion;IIZILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/RenderSize;
+}
+
+public final class io/github/lucf15/tiffrenderer/RenderSize$Fit : io/github/lucf15/tiffrenderer/RenderSize {
+	public fun <init> (IIZ)V
+	public synthetic fun <init> (IIZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Z
+	public final fun copy (IIZ)Lio/github/lucf15/tiffrenderer/RenderSize$Fit;
+	public static synthetic fun copy$default (Lio/github/lucf15/tiffrenderer/RenderSize$Fit;IIZILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/RenderSize$Fit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAllowUpscale ()Z
+	public final fun getMaxHeight ()I
+	public final fun getMaxWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/lucf15/tiffrenderer/RenderSize$Original : io/github/lucf15/tiffrenderer/RenderSize {
+	public static final field INSTANCE Lio/github/lucf15/tiffrenderer/RenderSize$Original;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/lucf15/tiffrenderer/TiffBitmap {
 	public static final field Companion Lio/github/lucf15/tiffrenderer/TiffBitmap$Companion;
 	public synthetic fun <init> (IILjava/nio/ByteBuffer;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun create (II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
 	public final fun getHeight ()I
 	public final fun getWidth ()I
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffBitmap$Companion {
+	public final fun create (II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
 	public final fun invoke (II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
 	public final fun wrapping (Ljava/nio/ByteBuffer;II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffBitmap_jvmKt {
-	public static final fun createTiffBitmap (II)Lio/github/lucf15/tiffrenderer/TiffBitmap;
-	public static final fun toByteArray (Lio/github/lucf15/tiffrenderer/TiffBitmap;)[B
+	public static final fun copyPixels (Lio/github/lucf15/tiffrenderer/TiffBitmap;)[B
 	public static final fun toIntArray (Lio/github/lucf15/tiffrenderer/TiffBitmap;)[I
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffCloseableKt {
-	public static final fun use (Lio/github/lucf15/tiffrenderer/TiffPage;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static final fun use (Lio/github/lucf15/tiffrenderer/TiffRenderer;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
-public final class io/github/lucf15/tiffrenderer/TiffIOException : java/lang/RuntimeException {
-	public fun <init> (Ljava/lang/String;)V
+public final class io/github/lucf15/tiffrenderer/TiffDecodePolicy : java/lang/Enum {
+	public static final field ALLOW_PARTIAL Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;
+	public static final field STRICT Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;
+	public static fun values ()[Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;
 }
 
-public final class io/github/lucf15/tiffrenderer/TiffPage {
-	public final fun close (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+public final class io/github/lucf15/tiffrenderer/TiffError : java/lang/Enum {
+	public static final field INPUT_UNAVAILABLE Lio/github/lucf15/tiffrenderer/TiffError;
+	public static final field INVALID_DATA Lio/github/lucf15/tiffrenderer/TiffError;
+	public static final field PARTIAL_DECODE Lio/github/lucf15/tiffrenderer/TiffError;
+	public static final field RESOURCE_LIMIT Lio/github/lucf15/tiffrenderer/TiffError;
+	public static final field WORKER_UNAVAILABLE Lio/github/lucf15/tiffrenderer/TiffError;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffError;
+	public static fun values ()[Lio/github/lucf15/tiffrenderer/TiffError;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffFutures {
+	public static final field INSTANCE Lio/github/lucf15/tiffrenderer/TiffFutures;
+	public static final fun render (Ljava/nio/file/Path;ILio/github/lucf15/tiffrenderer/RenderSize;)Ljava/util/concurrent/CompletableFuture;
+	public static final fun render (Ljava/nio/file/Path;ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffOptions;)Ljava/util/concurrent/CompletableFuture;
+	public static synthetic fun render$default (Ljava/nio/file/Path;ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffOptions;ILjava/lang/Object;)Ljava/util/concurrent/CompletableFuture;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffIOException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;Lio/github/lucf15/tiffrenderer/TiffError;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Lio/github/lucf15/tiffrenderer/TiffError;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getReason ()Lio/github/lucf15/tiffrenderer/TiffError;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffLimits {
+	public fun <init> ()V
+	public fun <init> (JJJJ)V
+	public synthetic fun <init> (JJJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()J
+	public final fun copy (JJJJ)Lio/github/lucf15/tiffrenderer/TiffLimits;
+	public static synthetic fun copy$default (Lio/github/lucf15/tiffrenderer/TiffLimits;JJJJILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/TiffLimits;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxDecodedBytes ()J
+	public final fun getMaxInputBytes ()J
+	public final fun getMaxOutputBytes ()J
+	public final fun getMaxWorkingBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffOptions {
+	public fun <init> ()V
+	public fun <init> (Lio/github/lucf15/tiffrenderer/TiffLimits;Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;J)V
+	public synthetic fun <init> (Lio/github/lucf15/tiffrenderer/TiffLimits;Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lio/github/lucf15/tiffrenderer/TiffLimits;
+	public final fun component2 ()Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;
+	public final fun component3 ()J
+	public final fun copy (Lio/github/lucf15/tiffrenderer/TiffLimits;Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;J)Lio/github/lucf15/tiffrenderer/TiffOptions;
+	public static synthetic fun copy$default (Lio/github/lucf15/tiffrenderer/TiffOptions;Lio/github/lucf15/tiffrenderer/TiffLimits;Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;JILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/TiffOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCacheBytes ()J
+	public final fun getDecodePolicy ()Lio/github/lucf15/tiffrenderer/TiffDecodePolicy;
+	public final fun getLimits ()Lio/github/lucf15/tiffrenderer/TiffLimits;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffPageInfo {
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lio/github/lucf15/tiffrenderer/TiffPageInfo;
+	public static synthetic fun copy$default (Lio/github/lucf15/tiffrenderer/TiffPageInfo;IIIILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/TiffPageInfo;
+	public fun equals (Ljava/lang/Object;)Z
 	public final fun getHeight ()I
 	public final fun getIndex ()I
+	public final fun getRasterBytes ()J
 	public final fun getWidth ()I
-	public final fun render (Lio/github/lucf15/tiffrenderer/TiffBitmap;Lio/github/lucf15/tiffrenderer/TiffRect;Lio/github/lucf15/tiffrenderer/TiffTransform;Lio/github/lucf15/tiffrenderer/TiffRenderMode;Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun render$default (Lio/github/lucf15/tiffrenderer/TiffPage;Lio/github/lucf15/tiffrenderer/TiffBitmap;Lio/github/lucf15/tiffrenderer/TiffRect;Lio/github/lucf15/tiffrenderer/TiffTransform;Lio/github/lucf15/tiffrenderer/TiffRenderMode;Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
-	public final fun retainRaster (Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun retainRaster$default (Lio/github/lucf15/tiffrenderer/TiffPage;Lkotlin/jvm/functions/Function0;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffRect {
@@ -46,41 +170,89 @@ public final class io/github/lucf15/tiffrenderer/TiffRect {
 	public final fun getWidth ()I
 }
 
-public final class io/github/lucf15/tiffrenderer/TiffRenderMode : java/lang/Enum {
-	public static final field FOR_DISPLAY Lio/github/lucf15/tiffrenderer/TiffRenderMode;
-	public static final field FOR_PRINT Lio/github/lucf15/tiffrenderer/TiffRenderMode;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffRenderMode;
-	public static fun values ()[Lio/github/lucf15/tiffrenderer/TiffRenderMode;
+public final class io/github/lucf15/tiffrenderer/TiffRenderResult {
+	public fun <init> (Lio/github/lucf15/tiffrenderer/TiffBitmap;Ljava/util/Set;)V
+	public final fun component1 ()Lio/github/lucf15/tiffrenderer/TiffBitmap;
+	public final fun component2 ()Ljava/util/Set;
+	public final fun copy (Lio/github/lucf15/tiffrenderer/TiffBitmap;Ljava/util/Set;)Lio/github/lucf15/tiffrenderer/TiffRenderResult;
+	public static synthetic fun copy$default (Lio/github/lucf15/tiffrenderer/TiffRenderResult;Lio/github/lucf15/tiffrenderer/TiffBitmap;Ljava/util/Set;ILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/TiffRenderResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getImage ()Lio/github/lucf15/tiffrenderer/TiffBitmap;
+	public final fun getWarnings ()Ljava/util/Set;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffRenderer {
 	public static final field Companion Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;
-	public synthetic fun <init> (Lio/github/lucf15/tiffrenderer/TiffCoreHandle;Lio/github/lucf15/tiffrenderer/TiffSource;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Lio/github/lucf15/tiffrenderer/TiffCoreHandle;Lio/github/lucf15/tiffrenderer/TiffOpenedSource;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun close (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public final fun openPage (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun pageCount (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun pageInfo (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun renderInto (ILio/github/lucf15/tiffrenderer/TiffBitmap;Lio/github/lucf15/tiffrenderer/TiffRect;Lio/github/lucf15/tiffrenderer/TiffTransform;Lio/github/lucf15/tiffrenderer/TiffSampling;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun renderInto$default (Lio/github/lucf15/tiffrenderer/TiffRenderer;ILio/github/lucf15/tiffrenderer/TiffBitmap;Lio/github/lucf15/tiffrenderer/TiffRect;Lio/github/lucf15/tiffrenderer/TiffTransform;Lio/github/lucf15/tiffrenderer/TiffSampling;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun renderPage (ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffSampling;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun renderPage$default (Lio/github/lucf15/tiffrenderer/TiffRenderer;ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffSampling;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun trimCache (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffRenderer$Companion {
-	public final fun open (Lio/github/lucf15/tiffrenderer/TiffSource;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public static synthetic fun open$default (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Lio/github/lucf15/tiffrenderer/TiffSource;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun open (Lio/github/lucf15/tiffrenderer/TiffSource;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun open$default (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Lio/github/lucf15/tiffrenderer/TiffSource;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun render (Lio/github/lucf15/tiffrenderer/TiffSource;ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun render$default (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Lio/github/lucf15/tiffrenderer/TiffSource;ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun withDocument (Lio/github/lucf15/tiffrenderer/TiffSource;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun withDocument$default (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Lio/github/lucf15/tiffrenderer/TiffSource;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffRenderer_jvmKt {
+	public static final fun open (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Ljava/io/File;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun open (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Ljava/nio/file/Path;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun open$default (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Ljava/io/File;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun open$default (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Ljava/nio/file/Path;Lio/github/lucf15/tiffrenderer/TiffOptions;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static final fun renderAsync (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Ljava/nio/file/Path;ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffOptions;)Ljava/util/concurrent/CompletableFuture;
+	public static synthetic fun renderAsync$default (Lio/github/lucf15/tiffrenderer/TiffRenderer$Companion;Ljava/nio/file/Path;ILio/github/lucf15/tiffrenderer/RenderSize;Lio/github/lucf15/tiffrenderer/TiffOptions;ILjava/lang/Object;)Ljava/util/concurrent/CompletableFuture;
+	public static final fun toBufferedImage (Lio/github/lucf15/tiffrenderer/TiffBitmap;)Ljava/awt/image/BufferedImage;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffSampling : java/lang/Enum {
+	public static final field NEAREST Lio/github/lucf15/tiffrenderer/TiffSampling;
+	public static final field SMOOTH Lio/github/lucf15/tiffrenderer/TiffSampling;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffSampling;
+	public static fun values ()[Lio/github/lucf15/tiffrenderer/TiffSampling;
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffSource {
 	public static final field Companion Lio/github/lucf15/tiffrenderer/TiffSource$Companion;
-	public synthetic fun <init> (Ljava/lang/String;[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun release ()V
+	public synthetic fun <init> (Ljava/nio/file/Path;[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffSource$Companion {
 	public final fun fromByteArray ([B)Lio/github/lucf15/tiffrenderer/TiffSource;
 	public final fun fromFile (Ljava/io/File;)Lio/github/lucf15/tiffrenderer/TiffSource;
 	public final fun fromPath (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffSource;
+	public final fun fromPath (Ljava/nio/file/Path;)Lio/github/lucf15/tiffrenderer/TiffSource;
 }
 
 public final class io/github/lucf15/tiffrenderer/TiffTransform {
+	public static final field Companion Lio/github/lucf15/tiffrenderer/TiffTransform$Companion;
 	public fun <init> ([F)V
 	public final fun getValues ()[F
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffTransform$Companion {
+	public final fun identity ()Lio/github/lucf15/tiffrenderer/TiffTransform;
+	public final fun rotate (F)Lio/github/lucf15/tiffrenderer/TiffTransform;
+	public final fun scale (FF)Lio/github/lucf15/tiffrenderer/TiffTransform;
+	public static synthetic fun scale$default (Lio/github/lucf15/tiffrenderer/TiffTransform$Companion;FFILjava/lang/Object;)Lio/github/lucf15/tiffrenderer/TiffTransform;
+	public final fun translate (FF)Lio/github/lucf15/tiffrenderer/TiffTransform;
+}
+
+public final class io/github/lucf15/tiffrenderer/TiffWarning : java/lang/Enum {
+	public static final field PARTIAL_DECODE Lio/github/lucf15/tiffrenderer/TiffWarning;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/lucf15/tiffrenderer/TiffWarning;
+	public static fun values ()[Lio/github/lucf15/tiffrenderer/TiffWarning;
 }
 

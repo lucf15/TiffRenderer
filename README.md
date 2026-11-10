@@ -1,413 +1,314 @@
 # TiffRenderer
 
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.lucf15/tiffrenderer.svg)](https://central.sonatype.com/artifact/io.github.lucf15/tiffrenderer)
-[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20JVM%20%7C%20Web-blue)](#requirements)
 [![CI](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml/badge.svg)](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-A Kotlin Multiplatform library for decoding and rendering TIFF images — **Android, iOS,
-JVM/desktop, and Web (Kotlin/Wasm)** — including multi-page/multi-directory TIFFs, on top of
-`libtiff`.
+**Render TIFF documents from Kotlin on Android, iOS, desktop, and the web.**
+
+Open a document, choose a page and a size, get an image. TiffRenderer handles decoding,
+concurrent requests, native resources and memory limits using one shared libtiff core.
+
+> This checkout contains the upcoming **3.0 API**, which breaks compatibility with 2.x.
+> Until 3.0 is published, build this checkout from source to use the examples below.
+
+[Get started](#get-started) · [Platforms](#platforms) · [Rendering](#rendering) ·
+[Resources and cancellation](#resources-and-cancellation) · [Limits](#limits) ·
+[Sample app](#sample-app) · [Building and testing](#building-and-testing)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/sample-dark.png">
+  <img src="docs/images/sample.png" alt="The Compose Unstyled sample displaying a multipage TIFF">
+</picture>
+
+## Get started
+
+The library is published to Maven Central:
 
 ```kotlin
-// fd: an already-open, seekable file descriptor
-suspend fun loadThumbnail(fd: FileDescriptor, size: Long) {
-    TiffRenderer.open(TiffSource.fromFileDescriptor(fd, size)).use { renderer ->
-        renderer.openPage(0).use { page ->
-            val bitmap = createTiffBitmap(page.width, page.height)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
-        }
-    }
-}
-```
-
-## Contents
-
-- [Why TiffRenderer](#why-tiffrenderer)
-- [Install](#install)
-  - [Android](#android)
-  - [iOS](#ios)
-  - [JVM / desktop](#jvm--desktop)
-  - [Web (Kotlin/Wasm)](#web-kotlinwasm)
-  - [Building from source](#building-from-source)
-- [Getting started](#getting-started)
-  - [Android convenience overloads](#android-convenience-overloads)
-  - [JVM / desktop](#jvm--desktop-1)
-  - [Web (Kotlin/Wasm)](#web-kotlinwasm-1)
-- [Lifecycle](#lifecycle)
-- [Limitations](#limitations)
-- [Codec support](#codec-support)
-- [Testing](#testing)
-- [Native libraries](#native-libraries)
-- [Requirements](#requirements)
-- [Sample app](#sample-app)
-- [License](#license)
-
-## Why TiffRenderer
-
-Android has no built-in TIFF decoder. PDF gets `android.graphics.pdf.PdfRenderer`, backed by
-pdfium; TIFF gets nothing. TiffRenderer fills that gap. Its public API is deliberately modeled on
-`PdfRenderer`'s own shape — same method names, same lifecycle, same page/render-mode pattern — so
-it's immediately familiar to any Android developer. It diverges only where the underlying reality
-genuinely differs, documented inline where that happens.
-
-`TiffRenderer`/`TiffPage` are **one implementation shared across Android, iOS, JVM, and Web** — a
-single platform-neutral C++ core, with only the innermost native call swapped per platform (on Web
-it runs inside a Web Worker, an Emscripten build of the same core) — so decoding and rendering
-never drift between them. The whole public API is `suspend`-based so every call is safe to make
-directly from `Dispatchers.Main`/`viewModelScope`, and so Web can offload decoding to that Worker
-instead of blocking the browser's single UI thread.
-
-- Every TIFF directory is a `TiffPage`. `render()` takes an optional destination clip and affine
-  transform.
-- `TiffPage#retainRaster()` opts a page into decode caching, so rendering the same page at
-  multiple zoom levels doesn't redecode each time. Off by default — a cached raster is the page's
-  full uncompressed pixel grid, hundreds of MB for a large scan.
-- `TiffRenderMode.FOR_DISPLAY` (bilinear + mip minification) and `FOR_PRINT` (nearest-neighbor)
-  are genuinely different resampling paths, not just labels.
-- On Android, `TiffRenderer(ParcelFileDescriptor)` and
-  `TiffPage#render(Bitmap, Rect?, Matrix?, TiffRenderMode)` take the platform's own types
-  directly — no need to touch the cross-platform `TiffSource`/`TiffBitmap`/`TiffRect`/
-  `TiffTransform` wrappers at all.
-
-## Install
-
-> Versions before 2.0.0 were published to JitPack under `com.github.lucf15:TiffRenderer`. That
-> coordinate is no longer updated; migrate to the Maven Central one below.
-
-Published to Maven Central as `io.github.lucf15:tiffrenderer`, a regular Kotlin Multiplatform
-artifact (Android, JVM/desktop, `iosArm64`/`iosSimulatorArm64`, `wasmJs`):
-
-```kotlin
-// build.gradle.kts, in a Kotlin Multiplatform module
 kotlin {
-    sourceSets {
-        commonMain.dependencies {
-            implementation("io.github.lucf15:tiffrenderer:<version>") // see the badge above for the latest
-        }
+    sourceSets.commonMain.dependencies {
+        implementation("io.github.lucf15:tiffrenderer:<version>")
     }
 }
 ```
+
+Plain JVM and Android projects can add the same dependency in their `dependencies` block.
+Native libraries are included automatically. Choose a release matching the API you use.
+
+The main operation fits a page inside a bounding box while keeping its proportions:
+
+```kotlin
+val image = TiffRenderer.withDocument(source) { document ->
+    document.renderPage(
+        pageIndex = 0,
+        size = RenderSize.fit(maxWidth = 1200, maxHeight = 1600),
+    ).image
+}
+```
+
+Page indices start at **0**. Sizes are in **pixels**. The document closes when the block
+finishes, including after failure or cancellation. The returned image remains valid.
+
+For a single render:
+
+```kotlin
+val result = TiffRenderer.render(source, pageIndex = 0, size = RenderSize.fit(1200, 1600))
+```
+
+## Platforms
+
+Use the platform's file type directly, or create a reusable `TiffSource` for shared code.
+Each open creates an independent document and acquires its own resources.
 
 ### Android
 
-A plain (non-KMP) Android app can depend on it directly instead:
+Open a URI returned by the system file picker:
 
 ```kotlin
-// app/build.gradle.kts
-dependencies {
-    implementation("io.github.lucf15:tiffrenderer:<version>")
+val document = TiffRenderer.open(context, uri)
+try {
+    val result = document.renderPage(0, RenderSize.fit(1200, 1600))
+    imageView.setImageBitmap(result.image.asAndroidBitmap())
+} finally {
+    document.close()
 }
 ```
 
-`tiffrenderer`'s Android target pulls in `io.github.lucf15:tiffrenderer-native` (the compiled
-`.so`s) transitively; nothing extra to add for that.
+Or open and close automatically:
 
-### iOS
+```kotlin
+val bitmap = TiffRenderer.renderBitmap(context, uri, pageIndex = 0, maxWidth = 1200)
+```
 
-Any Kotlin Multiplatform project can depend on the Maven coordinate above from its own
-`iosMain`/`iosArm64`/`iosSimulatorArm64` source sets — no separate iOS-specific artifact. A pure
-Swift/Xcode project with no Kotlin involved still needs a real `.framework`/XCFramework, which
-this coordinate alone doesn't provide (Maven has no such artifact shape); build one from source
-the way `sample/iosApp` does, via `:lib:core`'s `embedAndSignAppleFrameworkForXcode` Gradle task.
+`open(file)` and `open(parcelFileDescriptor)` are also available. Descriptor inputs are
+duplicated: the caller keeps ownership of the original, and rendering uses an independent
+read position. Keep the original descriptor open until `open()` returns.
 
 ### JVM / desktop
 
-Same coordinate, `jvm()` target — works from a plain JVM project too, not just KMP:
-
 ```kotlin
-// build.gradle.kts
-dependencies {
-    implementation("io.github.lucf15:tiffrenderer:<version>")
+TiffRenderer.withDocument(TiffSource.fromPath(path)) { document ->
+    val image = document.renderPage(0, RenderSize.fit(1200, 1600)).image
+    val bufferedImage = image.toBufferedImage()
 }
 ```
 
-Bundles native libraries for macOS (`aarch64`, `x86_64`), Linux (`x86_64`, `aarch64`), and Windows
-(`x86_64`, `aarch64`); the right one is picked automatically at runtime based on the host JVM's
-`os.name`/`os.arch`.
+`Path`, `File`, and path strings are supported. Native libraries cover macOS, Linux and
+Windows on x86-64 and ARM64.
 
-### Web (Kotlin/Wasm)
+Java and synchronous JVM applications can use `BlockingTiffRenderer` with try-with-resources:
 
-Same coordinate, `wasmJs()` target, from a Compose Multiplatform or plain Kotlin/Wasm project's
-`wasmJsMain`:
-
-```kotlin
-// build.gradle.kts
-kotlin {
-    sourceSets {
-        wasmJsMain.dependencies {
-            implementation("io.github.lucf15:tiffrenderer:<version>")
-        }
-    }
+```java
+try (var document = BlockingTiffRenderer.open(path)) {
+    BufferedImage image = document.renderImage(0, 1200);
 }
 ```
 
-Decoding runs inside a dedicated Web Worker (spawned automatically on first use) rather than on
-the page's main thread, so a large TIFF's decode doesn't freeze scrolling/painting while it runs.
+Its methods block the calling thread; use it outside UI threads. `TiffFutures.render(...)`
+returns a `CompletableFuture`; cancelling the future cancels its coroutine request.
 
-### Building from source
-
-To build against a local clone instead of the published artifact, a Gradle
-[composite build](https://docs.gradle.org/current/userguide/composite_builds.html):
+### iOS / Kotlin Multiplatform
 
 ```kotlin
-// settings.gradle.kts, in the app that wants to depend on this library
-includeBuild("../path/to/TiffRenderer") {
-    dependencySubstitution {
-        substitute(module("io.github.lucf15:tiffrenderer")).using(project(":lib:core"))
-    }
+TiffRenderer.withDocument(TiffSource.fromUrl(url)) { document ->
+    val image = document.renderPage(0, RenderSize.fit(1200, 1600)).image
+    val uiImage = image.toUIImage()
 }
 ```
 
-Building the library requires the Android NDK and CMake, versions pinned in
-`gradle/libs.versions.toml`; Gradle fetches them automatically if they aren't already installed.
-Building for iOS additionally requires Xcode. `:lib:core`'s iOS cinterop tasks depend on
-`:lib:native`'s `buildTiffCoreForIos` task, so the native cross-compile
-(`lib/native/src/main/cpp/build-ios.sh`) runs automatically as part of any Gradle iOS build — no
-manual step needed.
+File URLs retain security-scoped access for the lifetime of the opened document when needed.
+The library supports iOS 15+ on ARM64 devices and simulators.
 
-libtiff, libjpeg, and libwebp are all vendored as git submodules. Clone with
-`--recurse-submodules`, or run `git submodule update --init --recursive` afterwards, before
-building any platform.
+For Swift, build the local package with `scripts/build-swift-package.sh`, then add `lib/swift`
+as a local Swift package in Xcode:
 
-Building for `wasmJs` additionally requires [Emscripten](https://emscripten.org/) (`emcmake`) on
-`PATH`; `:lib:core`'s `wasmJsProcessResources` task depends on `:lib:native`'s
-`buildTiffCoreForWasm` task, so that cross-compile runs automatically as part of any Gradle wasmJs
-build — no manual step needed.
+```swift
+import TiffRenderer
 
-## Getting started
-
-The snippet at the top of this README is the minimal case: open a source, open a page, render it.
-Every call below is a `suspend fun`, safe to call directly from `Dispatchers.Main`/
-`viewModelScope`; it internally dispatches decode work to a background dispatcher (or, on Web, the
-Worker) itself. A few more common cases:
-
-Rendering into a sub-region with a custom transform:
-
-```kotlin
-page.render(
-    bitmap,
-    destClip = TiffRect(0, 0, 512, 512),
-    transform = TiffTransform(floatArrayOf(2f, 0f, 0f, 0f, 2f, 0f)), // 2x scale
-    renderMode = TiffRenderMode.FOR_DISPLAY,
+let image = try await TiffRenderer.render(
+    url: url,
+    pageIndex: 0,
+    maxWidth: 1200,
+    maxHeight: 1600
 )
 ```
 
-Rendering the same page repeatedly (e.g. multiple zoom tiles) without redecoding each time:
+The Swift adapter maps task cancellation to the Kotlin request and closes its document
+before completing. The package build requires macOS and Xcode.
+
+### Web / Kotlin/Wasm
+
+Prefer the browser `File` or `Blob` directly:
 
 ```kotlin
-renderer.openPage(0).use { page ->
-    page.retainRaster()
-    // every render() call below reuses the same decode
-    page.render(tile1, clip1, transform1, TiffRenderMode.FOR_DISPLAY)
-    page.render(tile2, clip2, transform2, TiffRenderMode.FOR_DISPLAY)
+TiffRenderer.withDocument(TiffSource.fromBlob(file)) { document ->
+    val result = document.renderPage(0, RenderSize.fit(1200, 1600))
 }
 ```
 
-### Android convenience overloads
+Each document runs in its own worker. Files are read there, so large inputs do not pass through
+base64 strings or Kotlin byte arrays on the UI thread. Closing the document terminates its
+worker and releases its Wasm heap.
 
-On Android, everything above can take the platform's own `ParcelFileDescriptor`/`Bitmap`/`Rect`/
-`Matrix` types directly instead of the cross-platform `TiffSource`/`TiffBitmap`/`TiffRect`/
-`TiffTransform` wrappers:
+Rendered pixels remain in a JavaScript `ArrayBuffer`. The sample's Compose bridge uses
+Skiko's `installPixelsFromArrayBuffer` to display them without an intermediate Kotlin copy.
+The browser must support Kotlin/Wasm, workers, and the typed-array base64 APIs used by explicit
+Kotlin byte-array import/export.
+
+### In-memory input
+
+Available on every platform:
 
 ```kotlin
-// `pfd` must be a seekable ParcelFileDescriptor, e.g. from a content:// Uri via
-// context.contentResolver.openFileDescriptor(uri, "r"). TiffRenderer takes ownership of it.
-suspend fun renderPage(pfd: ParcelFileDescriptor) {
-    TiffRenderer(pfd).use { renderer ->
-        renderer.openPage(0).use { page ->
-            val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
-            page.render(bitmap, Rect(0, 0, 512, 512), Matrix().apply { setScale(2f, 2f) })
-        }
-    }
+val source = TiffSource.fromByteArray(bytes)
+```
+
+This takes an independent snapshot. Prefer file/URI/URL/Blob input for large documents to
+avoid the extra copy. The source is reusable and has no `close()` or `release()` obligation.
+
+## Rendering
+
+| Operation | Use it for |
+|---|---|
+| `pageCount()` | Number of pages; resolved lazily by walking the TIFF directories |
+| `pageInfo(index)` | Page index, original width, height and raster size estimate |
+| `renderPage(index, size)` | A new, independent output image |
+| `renderInto(index, destination, ...)` | Reusing a destination with a clip or affine transform |
+| `trimCache()` | Releasing the document's decoded raster cache |
+
+`RenderSize.fit(...)` preserves aspect ratio and avoids upscaling by default. Set
+`allowUpscale = true` explicitly, or choose `RenderSize.Original` for native resolution.
+
+`TiffSampling.SMOOTH` uses bilinear sampling with mip minification. `NEAREST` preserves discrete
+source pixels. `TiffTransform.scale`, `translate`, `rotate`, and `identity` build affine transforms.
+
+Advanced in-place rendering accepts `TiffRect` and `TiffTransform`; Android also accepts native
+`Bitmap`, `Rect` and `Matrix` values. Pixels outside the clip or transformed page are preserved.
+An in-place operation can modify the destination before reporting a decode error.
+
+### Damaged files
+
+Strict decoding is the default. A partial decode throws `TiffIOException` instead of silently
+returning an incomplete page. To accept recoverable damage explicitly:
+
+```kotlin
+val options = TiffOptions(decodePolicy = TiffDecodePolicy.ALLOW_PARTIAL)
+val result = TiffRenderer.render(source, 0, RenderSize.fit(1200, 1600), options)
+if (TiffWarning.PARTIAL_DECODE in result.warnings) {
+    // Tell the user that the page is incomplete.
 }
 ```
 
-`TiffTransform`/the `Matrix` overload only ever represent an **affine** transform (6 components);
-a genuinely non-affine (perspective) `Matrix` throws `IllegalArgumentException`, since neither
-type can represent one.
+`TiffIOException.reason` distinguishes resource limits, partial decoding, unavailable input,
+worker failures and decode errors. Invalid arguments and use after close remain programming errors.
 
-### JVM / desktop
+## Resources and cancellation
 
-```kotlin
-import io.github.lucf15.tiffrenderer.TiffRenderer
-import io.github.lucf15.tiffrenderer.TiffSource
-import io.github.lucf15.tiffrenderer.TiffRenderMode
-import io.github.lucf15.tiffrenderer.use
-import java.io.File
+| Resource | Ownership |
+|---|---|
+| Input description | Reusable; owns no open file descriptor |
+| Open document | Owns its acquired input, native decoder, worker and raster cache |
+| Rendered image | Independent of the document; follows platform GC/ARC lifetime |
+| Borrowed pixel view | Valid according to its platform contract; never transfer/detach its backing storage |
 
-suspend fun renderPage(file: File) {
-    TiffRenderer.open(TiffSource.fromFile(file)).use { renderer ->
-        renderer.openPage(0).use { page ->
-            val bitmap = createTiffBitmap(page.width, page.height)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
-            val pixels = bitmap.toIntArray() // packed ARGB, row-major
-        }
-    }
-}
-```
+Operations on one document are serialized internally. Callers can request different pages from
+concurrent coroutines without a separate mutex. `close()` waits for exclusive access, releases
+resources even from a cancelled coroutine, and is safe to call repeatedly.
 
-`TiffBitmap`'s pixels live in a direct (off-heap) `ByteBuffer`, so the native render call writes
-straight into it with no JVM-heap copy. `toIntArray()` above repacks into packed ARGB ints for
-convenience; `bitmap.toByteArray()` returns the raw RGBA8888 bytes directly (e.g. for handing to
-Skia's `installPixels`) without that per-pixel repacking.
+`open`, metadata reads, rendering, cache release and close are suspending operations. Reading
+already returned page properties and constructing render options are synchronous. Pixel exports
+such as `copyPixels()` and conversions such as `toBufferedImage()` allocate/copy memory.
 
-A direct `ByteBuffer` is off-heap memory. The JVM only reclaims it when its wrapper object is
-garbage-collected — there's no deterministic `close()`/`free()` for it. `createTiffBitmap`/
-`TiffBitmap(width, height)` allocate a fresh buffer every call. That's fine for a one-off render,
-but for a large page rendered repeatedly (e.g. on every resize or scroll frame), new buffers can
-pile up faster than GC reclaims the old ones and spike memory well past the heap's own `-Xmx`. For
-that case, allocate once and reuse:
+Cancellation stops waiting and prevents stale results from being published. A native libtiff call
+already in progress may finish before cleanup can complete. Suspending does not imply immediate
+interruption of native decoding.
 
-```kotlin
-val buffer = java.nio.ByteBuffer.allocateDirect(width * height * 4)
-val bitmap = TiffBitmap.wrapping(buffer, width, height)
-page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY) // render into `buffer` again on the next call
-```
+## Limits
 
-`TiffBitmap.wrapping` requires a direct, writable buffer at least `width * height * 4` bytes.
+The decoder always reads the **full source page** before resampling. A small thumbnail reduces
+output memory, not the source raster's decoding cost.
 
-### Web (Kotlin/Wasm)
+The defaults are conservative and configurable per document with `TiffOptions(limits = ...)`:
 
-```kotlin
-import io.github.lucf15.tiffrenderer.TiffRenderer
-import io.github.lucf15.tiffrenderer.TiffSource
-import io.github.lucf15.tiffrenderer.TiffRenderMode
-import io.github.lucf15.tiffrenderer.use
+| Limit | Default |
+|---|---:|
+| Input file | 128 MiB |
+| Decoded source page | 128 MiB |
+| Output image | 64 MiB |
+| Native working budget | 256 MiB |
+| Retained raster cache | Off |
 
-// bytes: the picked file's contents, e.g. from a browser File/FileReader
-suspend fun renderPage(bytes: ByteArray) {
-    TiffRenderer.open(TiffSource.fromByteArray(bytes)).use { renderer ->
-        renderer.openPage(0).use { page ->
-            val bitmap = createTiffBitmap(page.width, page.height)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
-        }
-    }
-}
-```
+Use `TiffOptions(cacheBytes = 16L * 1024 * 1024)` to keep a small decoded page for repeated
+renders. The working budget accounts for native raster, mip, cache and destination costs,
+with a 32 MiB reserve for libtiff. It is not a process-wide RSS cap: platform images,
+allocator capacity and concurrent documents have additional costs. libtiff allocations
+have a separate 32 MiB cumulative cap.
 
-Identical shape to every other platform; the only difference is `TiffSource.fromByteArray`, since
-there's no portable file descriptor or filesystem path to open from a browser. The first call in a
-page's lifetime spawns the decode Worker, awaited internally, so no separate warm-up step is
-needed.
+The native core also enforces hard upper bounds. Decode/working/output limits are checked before
+large rendering allocations. In-memory inputs require extra staging space. A cache only retains
+a page that fits `cacheBytes`, is released on document close, and can be trimmed explicitly.
 
-## Lifecycle
+Color output is 8-bit RGBA without ICC color management. High-bit-depth and floating-point TIFFs
+lose precision when converted for display.
 
-- One `TiffRenderer` per open document; close it when you're done, with `close()` or `.use {}`
-  (from `io.github.lucf15.tiffrenderer.use`, not `kotlin.io.use` — `close()` is `suspend`, so
-  `TiffRenderer`/`TiffPage` aren't `AutoCloseable`).
-- Only one `TiffPage` may be open at a time per `TiffRenderer`, matching libtiff's own
-  single-directory-cursor model: open, render, close before opening the next page.
-- `TiffRenderer.open(...)`, `openPage()`, and `TiffPage#render()`/`retainRaster()` can all throw
-  [`TiffIOException`](lib/core/src/commonMain/kotlin/io/github/lucf15/tiffrenderer/TiffIOException.kt)
-  (an unchecked `RuntimeException`): a directory can fail to open, or a page's compression scheme
-  can fail to decode, even after the document itself opened successfully — TIFF's per-directory
-  codec independence means decode failures are genuinely per-page, not just per-file.
-
-## Limitations
-
-- **Not thread safe.** A `TiffRenderer`/`TiffPage` instance must not be called concurrently from
-  more than one thread; a caller doing so (e.g. a scrolling UI rendering several pages at once)
-  needs its own external lock around calls into the same instance.
-- **Full page decoded into memory, always.** `render()` decodes the entire source page into an
-  uncompressed RGBA raster before drawing any of it, even into a small destination bitmap — there's
-  no tiled or streaming decode. Use `destClip`/`transform` to control the *destination* size, not
-  to reduce how much of the source gets decoded.
-- **Decode is capped, not unbounded.** Pages beyond ~250 million pixels (64-bit targets) or ~64
-  million pixels (32-bit Android ABIs — `armeabi-v7a`/`x86`) throw `TiffIOException` rather than
-  attempting the decode, to fail cleanly instead of risking an OOM kill.
-- **`TiffSource` is single-use.** Each `TiffSource` is consumed by the `TiffRenderer` it's passed
-  to, even if construction fails; passing the same instance to a second `TiffRenderer` throws
-  `IllegalStateException`. If a source is created but never handed to a `TiffRenderer` at all, call
-  `release()` on it directly to free its underlying resource (e.g. a file descriptor) instead of
-  leaving that to happen whenever the object is garbage-collected.
-- **No color management, no >8-bit precision.** Decoding goes through libtiff's
-  `TIFFReadRGBAImageOriented`, which flattens 16-bit-per-channel and floating-point TIFFs to plain
-  8-bit RGBA and ignores any embedded ICC profile. Scientific/medical TIFFs relying on higher
-  precision, or documents expecting color-managed rendering, decode without error but lose that
-  information silently.
-
-## Codec support
-
-Codec support is intentionally narrow in this first version:
-
-| Codec                  | Supported | Notes                                                             |
-|------------------------|:---------:|--------------------------------------------------------------------|
-| Uncompressed           | ✅        |                                                                    |
-| PackBits               | ✅        |                                                                    |
-| LZW                    | ✅        |                                                                    |
-| CCITT Group 3/4 (fax)  | ✅        |                                                                    |
-| Deflate / ZIP          | ✅        | via the platform's bundled zlib (Web via Emscripten's zlib port)  |
-| JPEG-in-TIFF           | ✅        | via vendored IJG libjpeg                                          |
-| WebP                   | ✅        | via vendored libwebp                                              |
-| Zstd                   | ❌        | would require vendoring libzstd                                  |
-| LERC                   | ❌        | would require vendoring LERC                                     |
-| LZMA                   | ❌        | would require vendoring liblzma                                  |
-| JBIG                   | ❌        | untested, no fixture available                                   |
-
-A TIFF using an unsupported codec opens fine (the compression tag is just metadata until
-something actually tries to decode pixels) but `TiffPage#render()` throws `TiffIOException` once
-decoding is actually attempted. It never silently misdecodes or crashes.
-
-## Testing
-
-Most of the suite runs unmodified against the real native decode path on Android
-(on-device/emulator), iOS (simulator), and JVM — no mocks. It covers the lifecycle state machine,
-the codec support matrix above (every unsupported codec must throw `TiffIOException` from
-`render()`, never `openPage()`), `retainRaster()`'s cache correctness, hostile/corrupt input
-handling, and pixel-level render correctness including mip-pyramid minification. A smaller set of
-platform-specific tests cover Android's `Bitmap`/`Matrix`/`Rect` convenience overloads and
-JVM-specific concerns like native-library resolution and thread contention on the per-document
-lock. Fixtures are real `.tif` files under `lib/core/src/commonTest/resources/`, generated by
-`lib/core/src/commonTest/tools/generate_fixtures.py`.
-
-```
-./gradlew :lib:core:jvmTest                     # JVM, no device/emulator needed
-./gradlew :lib:core:iosSimulatorArm64Test        # iOS simulator
-./gradlew :lib:core:connectedAndroidDeviceTest   # Android, needs a running device/emulator
-```
-
-## Native libraries
-
-Vendored as pinned git submodules under `lib/native/src/main/cpp/third_party/` (the same sources
-back the Android, iOS, JVM, and Web builds):
-
-| Library                                             | Version |
-|------------------------------------------------------|---------|
-| [libtiff](https://gitlab.com/libtiff/libtiff)         | 4.7.2   |
-| [IJG libjpeg](https://github.com/libjpeg-turbo/ijg)   | 10      |
-| [libwebp](https://github.com/webmproject/libwebp)     | 1.6.0   |
-
-All three bump automatically, including this table (see `.github/workflows/libtiff-update-check.yml`,
-`libwebp-update-check.yml`, `libjpeg-update-check.yml`).
-
-Each library's copyright notice and license terms are reproduced in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
-
-## Requirements
-
-| Target      | Platform  | Architectures                                | Notes                                                          |
-|-------------|-----------|-----------------------------------------------|-----------------------------------------------------------------|
-| Android     | Android   | `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`   | `minSdk` 24+, `compileSdk` 37                                  |
-| iOS         | Device    | `arm64` (`iosArm64`)                          | Deployment target 13.0+                                        |
-| iOS         | Simulator | `arm64` (`iosSimulatorArm64`)                 | No `iosX64`: Apple/Xcode dropped Intel simulator support       |
-| JVM/desktop | macOS     | `aarch64`, `x86_64`                           | JDK 17+                                                        |
-| JVM/desktop | Linux     | `x86_64`, `aarch64`                           | JDK 17+                                                        |
-| JVM/desktop | Windows   | `x86_64`, `aarch64`                           | JDK 17+                                                        |
-| Web         | Browser   | `wasm32` (`wasmJs`)                           | Needs a browser with `WebAssembly.Memory`/Web Worker support   |
+Supported compression: **uncompressed, PackBits, LZW, CCITT Group 3/4, Deflate, JPEG and WebP**.
+Zstd, LERC, LZMA, JBIG and legacy JPEG are outside the supported codec set.
 
 ## Sample app
 
-`sample/` is a small Compose Multiplatform app that doubles as a manual test harness for every
-target: pick any TIFF via the system file picker (SAF on Android, `UIDocumentPickerViewController`
-on iOS, `JFileChooser` on desktop, the browser's own file input on Web) and page through it in an
-edge-to-edge scrolling viewer. `sample/androidApp`, `sample/iosApp`, `sample/desktopApp`, and
-`sample/webApp` are the four platform shells; `sample/shared` is the actual UI, shared between all
-of them. Run the iOS app by opening `sample/iosApp/iosApp.xcodeproj` in Xcode and hitting Run; run
-the desktop app via `./gradlew :sample:desktopApp:run`; run the web app via
-`./gradlew :sample:webApp:wasmJsBrowserDevelopmentRun`, which opens a local dev server (typically
-`http://localhost:8080`).
+The sample is a Compose Unstyled document workspace for Android, iOS, desktop and Wasm.
+It opens with an original four-page TIFF publication. The document viewer includes a resizable
+thumbnail sidebar, grouped toolbar controls, fit-width and fit-page modes, light and dark appearances,
+keyboard shortcuts and native file pickers. Additional bundled examples are available after closing
+the current document from the information panel.
+
+```shell
+./gradlew :sample:desktopApp:run
+./gradlew :sample:webApp:wasmJsBrowserDevelopmentRun
+./gradlew :sample:androidApp:assembleDebug
+```
+
+Open `sample/iosApp/iosApp.xcodeproj` to run on iOS. On the web, the dev server normally listens
+on [localhost:8080](http://localhost:8080).
+
+Generate optional local test documents with:
+
+```shell
+python3 sample/tiff-examples/generate_samples.py
+```
+
+Requires Pillow and the fonts selected by the script. It produces small text documents,
+multipage faxes, noisy color scans and a larger uncompressed TIFF. Generated test binaries are ignored
+by Git. To regenerate the bundled publication, run
+`python3 sample/tiff-examples/generate_catalog.py` with Pillow installed; it uses the bundled Inter fonts.
+
+## Building and testing
+
+Initialize native dependencies after cloning:
+
+```shell
+git submodule update --init --recursive
+```
+
+Use the Gradle wrapper and the toolchain versions in `gradle/libs.versions.toml`. Native builds
+require the Android SDK/NDK and CMake; iOS additionally requires Xcode, and Wasm requires Emscripten.
+
+```shell
+./gradlew :lib:core:jvmTest
+./gradlew :lib:core:wasmJsTest
+./gradlew :lib:core:iosSimulatorArm64Test
+./gradlew :lib:core:connectedAndroidDeviceTest
+./gradlew :sample:webApp:wasmJsTest
+node --test lib/native/src/test/js/tiffcore-glue.test.mjs
+```
+
+Browser tests require Chrome/Chromium. Android tests require a device/emulator; iOS tests require
+a compatible simulator. CI runs real decode fixtures, worker lifecycle tests, native sanitizer
+checks and scheduled fuzzing. Fuzz crashes in dependencies fail the job too.
+
+The C++ core uses libtiff, IJG libjpeg and libwebp. See [third-party licenses](THIRD_PARTY_LICENSES.md).
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+[Apache 2.0](LICENSE).

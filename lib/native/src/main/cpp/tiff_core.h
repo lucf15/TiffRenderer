@@ -39,6 +39,7 @@ typedef enum {
     // decode error in some part of the page (e.g. one bad strip) and returned the rest of the
     // raster anyway, instead of failing outright. Callers should treat this as success.
     TIFFCORE_OK_PARTIAL = 4,
+    TIFFCORE_ERROR_LIMIT = 5,
 } TiffCoreStatus;
 
 typedef enum {
@@ -78,6 +79,8 @@ TiffCoreStatus tiffcore_open_memory(const uint8_t* data, int64_t size, TiffCoreD
 // Frees doc and its libtiff handle; a no-op if doc is null. Does not touch the fd.
 void tiffcore_close(TiffCoreDocument* doc);
 
+TiffCoreStatus tiffcore_set_limits(TiffCoreDocument* doc, uint64_t decoded, uint64_t working, char* errBuf, size_t errBufLen);
+
 int32_t tiffcore_get_page_count(TiffCoreDocument* doc);
 
 // Seeks to pageIndex and reports its dimensions without decoding pixels.
@@ -97,7 +100,7 @@ void tiffcore_release_raster(TiffCoreDocument* doc);
 // (android.graphics.Matrix#getValues() order); pixels outside the clip or the source page are
 // left untouched.
 TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, uint32_t* dstPixels,
-        int32_t dstStridePixels, int32_t dstWidth, int32_t dstHeight, int32_t clipLeft,
+        size_t dstByteCount, int32_t dstStridePixels, int32_t dstWidth, int32_t dstHeight, int32_t clipLeft,
         int32_t clipTop, int32_t clipRight, int32_t clipBottom, const float matrix[6],
         TiffCoreRenderMode renderMode, char* errBuf, size_t errBufLen);
 

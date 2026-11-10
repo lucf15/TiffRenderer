@@ -4,6 +4,9 @@
 package io.github.lucf15.tiffrenderer
 
 import kotlin.js.Promise
+import org.khronos.webgl.ArrayBuffer
+import org.khronos.webgl.Uint8Array
+import org.w3c.files.Blob
 
 internal external interface OpenMemoryResponse : JsAny {
     val status: Int
@@ -24,7 +27,7 @@ internal external interface OpenPageResponse : JsAny {
 
 internal external interface RenderPageResponse : JsAny {
     val status: Int
-    val pixelsBase64: String?
+    val pixels: Uint8Array?
     val message: String?
 }
 
@@ -41,7 +44,11 @@ internal external interface TiffCoreSession : JsAny {
 
     fun openMemory(base64: String): Promise<OpenMemoryResponse>
 
+    fun openBlob(blob: Blob): Promise<OpenMemoryResponse>
+
     fun close(doc: Int): Promise<JsAny?>
+
+    fun setLimits(doc: Int, decoded: Double, working: Double): Promise<StatusResponse>
 
     fun getPageCount(doc: Int): Promise<PageCountResponse>
 
@@ -63,6 +70,7 @@ internal external interface TiffCoreSession : JsAny {
         matrix4: Float,
         matrix5: Float,
         renderMode: Int,
+        destination: ArrayBuffer?,
     ): Promise<RenderPageResponse>
 
     fun retainRaster(doc: Int, pageIndex: Int): Promise<StatusResponse>

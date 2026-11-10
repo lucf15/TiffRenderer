@@ -18,6 +18,7 @@
 #define TIFFRENDERER_AFFINE_H
 
 #include <cmath>
+#include <limits>
 
 namespace tiffrenderer {
 
@@ -40,21 +41,16 @@ public:
                 || !std::isfinite(myx_) || !std::isfinite(myy_) || !std::isfinite(mty_)) {
             return false;
         }
-        const float det = mxx_ * myy_ - mxy_ * myx_;
-        if (std::fabs(det) < 1e-9f) {
-            return false;
+        const double det = static_cast<double>(mxx_) * myy_ - static_cast<double>(mxy_) * myx_;
+        if (!std::isfinite(det) || det == 0) return false;
+        const double inverse[6] = {
+            myy_ / det, -mxy_ / det, -(static_cast<double>(myy_) * mtx_ - static_cast<double>(mxy_) * mty_) / det,
+            -myx_ / det, mxx_ / det, -(-static_cast<double>(myx_) * mtx_ + static_cast<double>(mxx_) * mty_) / det
+        };
+        for (double value : inverse) {
+            if (!std::isfinite(value) || std::fabs(value) > std::numeric_limits<float>::max()) return false;
         }
-        const float invDet = 1.0f / det;
-        const float outMxx = myy_ * invDet;
-        const float outMxy = -mxy_ * invDet;
-        const float outMyx = -myx_ * invDet;
-        const float outMyy = mxx_ * invDet;
-        out->mxx_ = outMxx;
-        out->mxy_ = outMxy;
-        out->myx_ = outMyx;
-        out->myy_ = outMyy;
-        out->mtx_ = -(outMxx * mtx_ + outMxy * mty_);
-        out->mty_ = -(outMyx * mtx_ + outMyy * mty_);
+        *out = AffineTransform(inverse[0], inverse[1], inverse[2], inverse[3], inverse[4], inverse[5]);
         return true;
     }
 

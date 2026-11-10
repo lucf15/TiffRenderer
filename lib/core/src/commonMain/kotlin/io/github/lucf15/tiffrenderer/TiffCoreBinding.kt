@@ -13,9 +13,11 @@ internal class TiffCorePageSize(val width: Int, val height: Int)
  * (a caller-supplied dispatcher, e.g. a test dispatcher) instead of a fixed choice baked into the
  * library that nothing can override. */
 internal expect object TiffCoreBinding {
-    suspend fun open(source: TiffSource, dispatcher: CoroutineDispatcher): TiffCoreHandle
+    suspend fun open(source: TiffOpenedSource, dispatcher: CoroutineDispatcher): TiffCoreHandle
 
     suspend fun close(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher)
+
+    suspend fun setLimits(handle: TiffCoreHandle, limits: TiffLimits, dispatcher: CoroutineDispatcher)
 
     suspend fun getPageCount(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher): Int
 
@@ -28,7 +30,7 @@ internal expect object TiffCoreBinding {
         destination: TiffBitmap,
         clip: TiffRect,
         transform: TiffTransform,
-        mode: TiffRenderMode,
+        mode: TiffSampling,
         dispatcher: CoroutineDispatcher,
     ): Boolean
 
