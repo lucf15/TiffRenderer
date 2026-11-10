@@ -15,10 +15,6 @@ Supports single-page and multipage files through libtiff, with configurable memo
 [Codec support](#codec-support) · [Native libraries](#native-libraries) ·
 [Sample app](#sample-app) · [Building and testing](#building-and-testing)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/sample-dark.png">
-  <img src="docs/images/sample.png" width="1280" alt="TiffRenderer sample displaying a multipage TIFF">
-</picture>
 
 ## Get started
 
@@ -337,6 +333,11 @@ Files are decoded locally in the browser and are not uploaded.
 The Compose Unstyled sample runs on Android, iOS, desktop and Wasm. It includes a resizable
 thumbnail sidebar, fit-width and fit-page modes, keyboard shortcuts and native file pickers.
 To return to the sample list, close the document from the information panel.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/sample-dark.png">
+  <img src="docs/images/sample.png" width="1280" alt="TiffRenderer sample displaying a multipage TIFF">
+</picture>
 
 ```shell
 ./gradlew :sample:desktopApp:run
