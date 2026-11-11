@@ -1,0 +1,46 @@
+name: Native dependency updates
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: native-dependencies-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  update:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - library: libtiff
+            repo: https://gitlab.com/libtiff/libtiff
+            tag-pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
+            prefix: v
+            link-text: libtiff
+          - library: libwebp
+            repo: https://github.com/webmproject/libwebp
+            tag-pattern: '^v[0-9]+\.[0-9]+\.[0-9]+$'
+            prefix: v
+            link-text: libwebp
+          - library: libjpeg
+            repo: https://github.com/libjpeg-turbo/ijg
+            tag-pattern: '^jpeg-[0-9]+[a-z]?$'
+            prefix: jpeg-
+            link-text: IJG libjpeg
+    uses: ./.github/workflows/native-lib-update-check.yml
+    with:
+      library_name: ${{ matrix.library }}
+      repo_url: ${{ matrix.repo }}
+      tag_pattern: ${{ matrix.tag-pattern }}
+      version_prefix: ${{ matrix.prefix }}
+      readme_link_text: ${{ matrix.link-text }}
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}

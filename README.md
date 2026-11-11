@@ -4,37 +4,47 @@
 [![CI](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml/badge.svg)](https://github.com/lucf15/TiffRenderer/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
+[![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white)](#platforms)
+[![Android](https://img.shields.io/badge/Android-24%2B-3DDC84?logo=android&logoColor=white)](#android)
+[![iOS](https://img.shields.io/badge/iOS-15%2B-000000?logo=apple&logoColor=white)](#ios--kotlin-multiplatform)
+[![JVM](https://img.shields.io/badge/JVM-17%2B-007396)](#jvm--desktop)
+[![Kotlin Wasm](https://img.shields.io/badge/Kotlin-Wasm-654FF0?logo=webassembly&logoColor=white)](#web--kotlinwasm)
+
 TIFF decoding and rendering for Kotlin Multiplatform: Android, iOS, JVM and Kotlin/Wasm.
 Supports single-page and multipage files through libtiff, with configurable memory limits.
 
-> This checkout contains the upcoming **3.0 API**, which breaks compatibility with 2.x.
-> Until 3.0 is published, build this checkout from source to use the examples below.
+> These examples use the **4.0 API**, which replaces the 3.x renderer and page APIs.
+> For the previous release, see the [3.0 documentation](https://github.com/lucf15/TiffRenderer/tree/v3.0.0#readme).
 
 [Web demo](https://lucf15.github.io/TiffRenderer/) · [Get started](#get-started) · [Platforms](#platforms) · [Rendering](#rendering) · [Output size](#output-size) ·
 [Resources and cancellation](#resources-and-cancellation) · [Limits](#limits) ·
 [Codec support](#codec-support) · [Native libraries](#native-libraries) ·
 [Sample app](#sample-app) · [Building and testing](#building-and-testing)
 
-
 ## Get started
 
-The library is published to Maven Central:
+Add the dependency from Maven Central:
 
 ```kotlin
 kotlin {
     sourceSets.commonMain.dependencies {
-        implementation("io.github.lucf15:tiffrenderer:<version>")
+        implementation("io.github.lucf15:tiffrenderer:4.0.0")
     }
 }
 ```
 
 Plain JVM and Android projects can add the same dependency in their `dependencies` block.
-Native libraries are included automatically. Choose a release matching the API you use.
+The published artifacts include the native libraries; consumers do not need an NDK or CMake.
 
 The Kotlin document API is **suspending**. Call it from a `suspend` function or an existing
 coroutine scope. For example, render the first page inside a 1200 × 1600 pixel bounding box:
 
 ```kotlin
+import io.github.lucf15.tiffrenderer.RenderSize
+import io.github.lucf15.tiffrenderer.TiffBitmap
+import io.github.lucf15.tiffrenderer.TiffRenderer
+import io.github.lucf15.tiffrenderer.TiffSource
+
 suspend fun renderFirstPage(source: TiffSource): TiffBitmap =
     TiffRenderer.withDocument(source) { document ->
         document.renderPage(
@@ -47,11 +57,8 @@ suspend fun renderFirstPage(source: TiffSource): TiffBitmap =
 Page indices start at **0**. Sizes are in **pixels**. The document closes when the block
 finishes, including after failure or cancellation. The returned image remains valid.
 
-For a single render:
-
-```kotlin
-val result = TiffRenderer.render(source, pageIndex = 0, size = RenderSize.fit(1200, 1600))
-```
+For a single render, `TiffRenderer.render(source, pageIndex, size)` opens and closes the
+document automatically and returns a `TiffRenderResult` containing the image and warnings.
 
 ### Suspending and synchronous calls
 
@@ -73,28 +80,39 @@ The Kotlin examples below run inside a suspend function or coroutine.
 
 ## Platforms
 
+| Target | Minimum runtime | Native architectures |
+|---|---|---|
+| Android | API 24 | arm64-v8a, armeabi-v7a, x86_64, x86 |
+| iOS | iOS 15 | ARM64 devices and simulators |
+| JVM / desktop | JDK 17 | macOS, Linux and Windows: x86-64 and ARM64 |
+| Web | Wasm GC, Wasm exception handling and Web Workers | Kotlin/Wasm |
+
 Use the platform's file type directly, or create a reusable `TiffSource` for shared code.
 Each open creates an independent document and acquires its own resources.
 
 ### Android
 
-Open a URI returned by the system file picker:
+Render a URI returned by the system file picker to an Android `Bitmap`:
 
 ```kotlin
-val document = TiffRenderer.open(context, uri)
-try {
-    val result = document.renderPage(0, RenderSize.fit(1200, 1600))
-    imageView.setImageBitmap(result.image.asAndroidBitmap())
-} finally {
-    document.close()
-}
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import io.github.lucf15.tiffrenderer.TiffRenderer
+import io.github.lucf15.tiffrenderer.renderBitmap
+
+suspend fun readTiff(context: Context, uri: Uri): Bitmap =
+    TiffRenderer.renderBitmap(
+        context = context,
+        uri = uri,
+        pageIndex = 0,
+        maxWidth = 1200,
+        maxHeight = 1600,
+    )
 ```
 
-Or open and close automatically:
-
-```kotlin
-val bitmap = TiffRenderer.renderBitmap(context, uri, pageIndex = 0, maxWidth = 1200)
-```
+For repeated page renders, keep a document open with `TiffRenderer.open(context, uri)`
+and close it in `finally`, or use `withDocument(TiffSource.fromUri(context, uri)) { ... }`.
 
 `open(file)` and `open(parcelFileDescriptor)` are also available. Descriptor inputs are
 duplicated: the caller keeps ownership of the original, and rendering uses an independent
@@ -103,20 +121,42 @@ read position. Keep the original descriptor open until `open()` returns.
 ### JVM / desktop
 
 ```kotlin
-TiffRenderer.withDocument(TiffSource.fromPath(path)) { document ->
-    val image = document.renderPage(0, RenderSize.fit(1200, 1600)).image
-    val bufferedImage = image.toBufferedImage()
+import java.awt.image.BufferedImage
+import java.nio.file.Path
+import io.github.lucf15.tiffrenderer.RenderSize
+import io.github.lucf15.tiffrenderer.TiffRenderer
+import io.github.lucf15.tiffrenderer.TiffSource
+import io.github.lucf15.tiffrenderer.toBufferedImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+suspend fun readTiff(path: Path): BufferedImage {
+    val result = TiffRenderer.render(
+        source = TiffSource.fromPath(path),
+        pageIndex = 0,
+        size = RenderSize.fit(1200, 1600),
+    )
+    return withContext(Dispatchers.Default) { result.image.toBufferedImage() }
 }
 ```
 
 `Path`, `File`, and path strings are supported. Native libraries cover macOS, Linux and
 Windows on x86-64 and ARM64.
 
-Java and synchronous JVM applications can use `BlockingTiffRenderer` with try-with-resources:
+From a Java method running off the UI thread, use `BlockingTiffRenderer` with
+try-with-resources:
 
 ```java
-try (var document = BlockingTiffRenderer.open(path)) {
-    BufferedImage image = document.renderImage(0, 1200);
+import java.awt.image.BufferedImage;
+import java.nio.file.Path;
+import io.github.lucf15.tiffrenderer.BlockingTiffRenderer;
+
+public final class TiffExample {
+    public static BufferedImage read(Path path) {
+        try (var document = BlockingTiffRenderer.open(path)) {
+            return document.renderImage(0, 1200, 1600);
+        }
+    }
 }
 ```
 
@@ -126,9 +166,22 @@ returns a `CompletableFuture`; cancelling the future cancels its coroutine reque
 ### iOS / Kotlin Multiplatform
 
 ```kotlin
-TiffRenderer.withDocument(TiffSource.fromUrl(url)) { document ->
-    val image = document.renderPage(0, RenderSize.fit(1200, 1600)).image
-    val uiImage = image.toUIImage()
+import platform.Foundation.NSURL
+import platform.UIKit.UIImage
+import io.github.lucf15.tiffrenderer.RenderSize
+import io.github.lucf15.tiffrenderer.TiffRenderer
+import io.github.lucf15.tiffrenderer.TiffSource
+import io.github.lucf15.tiffrenderer.toUIImage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+suspend fun readTiff(url: NSURL): UIImage {
+    val result = TiffRenderer.render(
+        source = TiffSource.fromUrl(url),
+        pageIndex = 0,
+        size = RenderSize.fit(1200, 1600),
+    )
+    return withContext(Dispatchers.Default) { result.image.toUIImage() }
 }
 ```
 
@@ -139,14 +192,19 @@ For Swift, build the local package with `scripts/build-swift-package.sh`, then a
 as a local Swift package in Xcode:
 
 ```swift
+import Foundation
+import UIKit
 import TiffRenderer
 
-let image = try await TiffRenderer.render(
-    url: url,
-    pageIndex: 0,
-    maxWidth: 1200,
-    maxHeight: 1600
-)
+@MainActor
+func readTiff(url: URL) async throws -> UIImage {
+    try await TiffRenderer.render(
+        url: url,
+        pageIndex: 0,
+        maxWidth: 1200,
+        maxHeight: 1600
+    )
+}
 ```
 
 The Swift adapter maps task cancellation to the Kotlin request and closes its document
@@ -157,9 +215,18 @@ before completing. The package build requires macOS and Xcode.
 Prefer the browser `File` or `Blob` directly:
 
 ```kotlin
-TiffRenderer.withDocument(TiffSource.fromBlob(file)) { document ->
-    val result = document.renderPage(0, RenderSize.fit(1200, 1600))
-}
+import org.w3c.files.File
+import io.github.lucf15.tiffrenderer.RenderSize
+import io.github.lucf15.tiffrenderer.TiffBitmap
+import io.github.lucf15.tiffrenderer.TiffRenderer
+import io.github.lucf15.tiffrenderer.TiffSource
+
+suspend fun readTiff(file: File): TiffBitmap =
+    TiffRenderer.render(
+        source = TiffSource.fromBlob(file),
+        pageIndex = 0,
+        size = RenderSize.fit(1200, 1600),
+    ).image
 ```
 
 Each document runs in its own worker. Files are read there, so large inputs do not pass through
@@ -176,7 +243,9 @@ Kotlin byte-array import/export.
 Available on every platform:
 
 ```kotlin
-val source = TiffSource.fromByteArray(bytes)
+import io.github.lucf15.tiffrenderer.TiffSource
+
+fun sourceFromMemory(bytes: ByteArray): TiffSource = TiffSource.fromByteArray(bytes)
 ```
 
 This takes an independent snapshot. Prefer file/URI/URL/Blob input for large documents to
@@ -214,6 +283,8 @@ For a 4000 × 2000 page, `fit(1200, 1200)` produces a 1200 × 600 image.
 `fit(6000, 6000)` keeps it at 4000 × 2000; allowing upscaling produces 6000 × 3000.
 
 ```kotlin
+import io.github.lucf15.tiffrenderer.RenderSize
+
 val thumbnail = RenderSize.fit(240, 320)
 val fitWidth = RenderSize.fit(maxWidth = 1200, maxHeight = Int.MAX_VALUE)
 val fitHeight = RenderSize.fit(maxWidth = Int.MAX_VALUE, maxHeight = 1600)
@@ -239,12 +310,24 @@ Strict decoding is the default. A partial decode throws `TiffIOException` instea
 returning an incomplete page. To accept recoverable damage explicitly:
 
 ```kotlin
-val options = TiffOptions(decodePolicy = TiffDecodePolicy.ALLOW_PARTIAL)
-val result = TiffRenderer.render(source, 0, RenderSize.fit(1200, 1600), options)
-if (TiffWarning.PARTIAL_DECODE in result.warnings) {
-    // Tell the user that the page is incomplete.
-}
+import io.github.lucf15.tiffrenderer.RenderSize
+import io.github.lucf15.tiffrenderer.TiffDecodePolicy
+import io.github.lucf15.tiffrenderer.TiffOptions
+import io.github.lucf15.tiffrenderer.TiffRenderResult
+import io.github.lucf15.tiffrenderer.TiffRenderer
+import io.github.lucf15.tiffrenderer.TiffSource
+
+suspend fun readDamagedPage(source: TiffSource): TiffRenderResult =
+    TiffRenderer.render(
+        source = source,
+        pageIndex = 0,
+        size = RenderSize.fit(1200, 1600),
+        options = TiffOptions(decodePolicy = TiffDecodePolicy.ALLOW_PARTIAL),
+    )
 ```
+
+Check `result.warnings` for `TiffWarning.PARTIAL_DECODE` before displaying the result
+as a complete page.
 
 `TiffIOException.reason` distinguishes resource limits, partial decoding, unavailable input,
 worker failures and decode errors. Invalid arguments and use after close remain programming errors.
@@ -345,7 +428,7 @@ To return to the sample list, close the document from the information panel.
 ./gradlew :sample:androidApp:assembleDebug
 ```
 
-Open `sample/iosApp/iosApp.xcodeproj` to run on iOS. On the web, the dev server normally listens
+The iOS sample targets iOS 18.2+. Open `sample/iosApp/iosApp.xcodeproj` to run it. On the web, the dev server normally listens
 on [localhost:8080](http://localhost:8080).
 
 Generate optional local test documents with:

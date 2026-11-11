@@ -2,13 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [main, "v3/**"]
+    branches: [main]
     paths-ignore:
       - "README.md"
       - "LICENSE"
+      - "docs/**"
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish release and web demo from main after checks pass
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -72,7 +78,7 @@ jobs:
           mv "$manifest" SHA256SUMS
 
       - name: Attest build provenance for the Android native libs this job built
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: /tmp/android-native-libs/*/*.so
@@ -165,7 +171,7 @@ jobs:
           mv "$manifest" SHA256SUMS
 
       - name: Attest build provenance for the native library this job built
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
@@ -213,7 +219,7 @@ jobs:
           done
 
       - name: Attest build provenance for the iOS native libs this job built
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: lib/native/build/ios/*/*.a
@@ -252,6 +258,11 @@ jobs:
       - name: Build the sample web app
         run: ./gradlew :sample:webApp:wasmJsBrowserDistribution
 
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        with:
+          path: sample/webApp/build/dist/wasmJs/productionExecutable
+
       - name: Checksum the wasm module this job just built and tested
         run: |
           cd lib/native/build/wasm
@@ -260,7 +271,7 @@ jobs:
           mv "$manifest" SHA256SUMS
 
       - name: Attest build provenance for the wasm module this job built
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
@@ -274,9 +285,18 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  deploy-web-demo:
+    needs: [build-android, build-jvm, build-ios, build-wasm]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+
   semantic-release:
     needs: [build-android, build-jvm, build-ios, build-wasm]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

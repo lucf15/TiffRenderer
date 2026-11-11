@@ -50,113 +50,29 @@ jobs:
           TAG_PATTERN: ${{ inputs.tag_pattern }}
         run: |
           cd "lib/native/src/main/cpp/third_party/${{ inputs.library_name }}"
-          git fetch --tags --quiet
-          current_tag=$(git describe --tags --exact-match 2>/dev/null || echo "")
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --unshallow --tags --quiet
+          else
+            git fetch --tags --quiet
+          fi
+          current_tag=$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD)
           latest_tag=$(git tag -l | grep -E "$TAG_PATTERN" | sort -V | tail -1)
-          echo "current: ${current_tag:-<none>}, latest: $latest_tag"
-          if [ -n "$latest_tag" ] && [ "$current_tag" != "$latest_tag" ]; then
-            latest_sha=$(git rev-parse "$latest_tag^{commit}")
-            echo "bump=true" >> "$GITHUB_OUTPUT"
-            echo "new_tag=$latest_tag" >> "$GITHUB_OUTPUT"
-            echo "new_sha=$latest_sha" >> "$GITHUB_OUTPUT"
-            echo "current_tag=$current_tag" >> "$GITHUB_OUTPUT"
+          latest_sha=$(git rev-parse "$latest_tag^{commit}")
+          echo "current: $current_tag, latest: $latest_tag"
+          if ! git merge-base --is-ancestor "$latest_sha" HEAD; then
+            {
+              echo "bump=true"
+              echo "new_tag=$latest_tag"
+              echo "new_sha=$latest_sha"
+              echo "current_tag=$current_tag"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "bump=false" >> "$GITHUB_OUTPUT"
           fi
 
-  verify-android:
-    needs: check
-    if: needs.check.outputs.bump == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/checkout-candidate-submodule
-        with:
-          library_name: ${{ inputs.library_name }}
-          new_sha: ${{ needs.check.outputs.new_sha }}
-
-      - uses: ./.github/actions/setup-android-toolchain
-
-      - name: Build library (all ABIs)
-        run: ./gradlew :lib:core:bundleAndroidMainAar
-
-      - uses: ./.github/actions/run-android-instrumented-tests
-
-  verify-jvm:
-    needs: check
-    if: needs.check.outputs.bump == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            java-arch: arm64
-            java-distribution: temurin
-          - os: macos-latest
-            java-arch: x64
-            java-distribution: temurin
-          - os: ubuntu-latest
-            java-arch: x64
-            java-distribution: temurin
-          - os: ubuntu-24.04-arm
-            java-arch: arm64
-            java-distribution: temurin
-          - os: windows-latest
-            java-arch: x64
-            java-distribution: temurin
-          - os: windows-11-arm
-            java-arch: arm64
-            java-distribution: zulu
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/checkout-candidate-submodule
-        with:
-          library_name: ${{ inputs.library_name }}
-          new_sha: ${{ needs.check.outputs.new_sha }}
-
-      - uses: ./.github/actions/setup-jvm-and-test
-        with:
-          os: ${{ matrix.os }}
-          java-distribution: ${{ matrix.java-distribution }}
-          java-arch: ${{ matrix.java-arch }}
-
-  verify-ios:
-    needs: check
-    if: needs.check.outputs.bump == 'true'
-    runs-on: macos-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: recursive
-
-      - uses: ./.github/actions/checkout-candidate-submodule
-        with:
-          library_name: ${{ inputs.library_name }}
-          new_sha: ${{ needs.check.outputs.new_sha }}
-
-      - uses: ./.github/actions/setup-android-toolchain
-
-      - run: ./gradlew :lib:core:compileKotlinIosArm64 :lib:core:iosSimulatorArm64Test
-
   pr:
-    needs: [check, verify-android, verify-jvm, verify-ios]
-    if: always() && needs.check.outputs.bump == 'true'
+    needs: check
+    if: needs.check.outputs.bump == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -166,6 +82,7 @@ jobs:
     outputs:
       pull-request-number: ${{ steps.pr.outputs.pull-request-number }}
       branch: bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
+      head-sha: ${{ steps.pr.outputs.pull-request-head-sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -181,14 +98,22 @@ jobs:
         env:
           VERSION_PREFIX: ${{ inputs.version_prefix }}
           README_LINK_TEXT: ${{ inputs.readme_link_text }}
-          CURRENT_TAG: ${{ needs.check.outputs.current_tag }}
           NEW_TAG: ${{ needs.check.outputs.new_tag }}
         run: |
-          if [ -z "$CURRENT_TAG" ]; then
-            echo "current_tag is empty (submodule wasn't checked out at an exact tag); refusing to guess which version to replace" >&2
-            exit 1
-          fi
-          sed -i "/\[$README_LINK_TEXT\]/ s/${CURRENT_TAG#"$VERSION_PREFIX"}/${NEW_TAG#"$VERSION_PREFIX"}/" README.md
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          path = Path("README.md")
+          rows = path.read_text().splitlines(keepends=True)
+          label = f"[{os.environ['README_LINK_TEXT']}]("
+          matches = [i for i, row in enumerate(rows) if row.startswith("|") and label in row.split("|")[1]]
+          if len(matches) != 1:
+              raise SystemExit("Expected exactly one native library version row")
+          cells = rows[matches[0]].split("|")
+          cells[2] = " " + os.environ["NEW_TAG"].removeprefix(os.environ["VERSION_PREFIX"]) + " "
+          rows[matches[0]] = "|".join(cells)
+          path.write_text("".join(rows))
+          PYTHON
 
       - name: Open PR
         id: pr
@@ -199,20 +124,15 @@ jobs:
           commit-message: "chore(${{ inputs.library_name }}): bump submodule to ${{ needs.check.outputs.new_tag }}"
           title: "chore(${{ inputs.library_name }}): bump submodule to ${{ needs.check.outputs.new_tag }}"
           body: |
-            Upstream released `${{ needs.check.outputs.new_tag }}` on ${{ inputs.repo_url }}. This
-            bumps the pinned submodule commit to match, and updates the version reference in
-            README.md to stay in sync.
+            Update the pinned ${{ inputs.library_name }} source to `${{ needs.check.outputs.new_tag }}`
+            from ${{ inputs.repo_url }} and update its README version.
 
-            Build (all 4 Android ABIs, all 6 JVM desktop OS/arch combos, iOS) and the full
-            instrumented suite (codec support matrix + corrupt-input crash tests) already ran
-            against this exact change before this PR was opened.
-            ${{ (needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success') && 'They passed. This PR is opened with the repos own GITHUB_TOKEN, so ci.ymls normal pull_request trigger never fires on it; a real ci.yml run against this branch is now being dispatched to satisfy mains required status checks, and this auto-merges once that run is green.' || '**They FAILED**: this needs manual investigation before merging.' }}
+            The full CI is dispatched for this commit. The PR merges only after it passes.
           branch: bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
           base: main
           labels: dependencies
 
       - name: Dispatch a real ci.yml run against the bump branch
-        if: needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success' && needs.verify-ios.result == 'success'
         env:
           GH_TOKEN: ${{ secrets.token }}
         run: |
@@ -220,10 +140,8 @@ jobs:
               --ref bump-${{ inputs.library_name }}-${{ needs.check.outputs.new_tag }}
 
   wait-for-required-checks:
-    needs: [check, verify-android, verify-jvm, verify-ios, pr]
-    if: >-
-      needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success'
-      && needs.verify-ios.result == 'success'
+    needs: [check, pr]
+    if: needs.pr.outputs.pull-request-number != ''
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -233,12 +151,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.token }}
           BRANCH: ${{ needs.pr.outputs.branch }}
+          HEAD_SHA: ${{ needs.pr.outputs.head-sha }}
         run: |
           run_id=""
           for _ in $(seq 1 30); do
             run_id=$(gh run list --repo "${{ github.repository }}" --workflow ci.yml \
                 --branch "$BRANCH" --event workflow_dispatch --limit 1 \
-                --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
+                --json databaseId,headSha --jq ".[] | select(.headSha == \"$HEAD_SHA\") | .databaseId" 2>/dev/null || echo "")
             [ -n "$run_id" ] && break
             sleep 10
           done
@@ -250,18 +169,18 @@ jobs:
           gh run watch "$run_id" --repo "${{ github.repository }}" --exit-status
 
   merge:
-    needs: [check, verify-android, verify-jvm, verify-ios, pr, wait-for-required-checks]
-    if: >-
-      needs.verify-android.result == 'success' && needs.verify-jvm.result == 'success'
-      && needs.verify-ios.result == 'success' && needs.wait-for-required-checks.result == 'success'
+    needs: [pr, wait-for-required-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     steps:
       - name: Auto-merge PR
         env:
           GH_TOKEN: ${{ secrets.token }}
           REPO: ${{ github.repository }}
-        run: gh pr merge "${{ needs.pr.outputs.pull-request-number }}" --repo "$REPO" --squash --delete-branch
+        run: |
+          gh pr merge "${{ needs.pr.outputs.pull-request-number }}" --repo "$REPO" --squash --delete-branch
+          gh workflow run ci.yml --repo "$REPO" --ref main -F publish=true

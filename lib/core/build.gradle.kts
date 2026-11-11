@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "io.github.lucf15"
-version = System.getenv("VERSION") ?: "3.0.0-SNAPSHOT"
+version = System.getenv("VERSION") ?: "4.0.0-SNAPSHOT"
 
 val bcvKlibPipelineHostRecognized = System.getProperty("os.name").lowercase().contains("mac") ||
         System.getProperty("os.arch").lowercase() in setOf("x86_64", "amd64")

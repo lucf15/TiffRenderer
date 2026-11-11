@@ -1,51 +1,17 @@
 name: Web demo
 
 on:
-  push:
-    branches: [main, v3/api-and-sample]
-    paths:
-      - "sample/**"
-      - "lib/**"
-      - "gradle/**"
-      - "gradle.properties"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - ".github/workflows/pages.yml"
-      - ".github/actions/setup-android-toolchain/**"
-      - ".github/actions/setup-emscripten-toolchain/**"
-  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 concurrency:
   group: github-pages
   cancel-in-progress: false
 
-permissions:
-  contents: read
-
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      TIFFRENDERER_WERROR: "true"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          submodules: recursive
-      - uses: ./.github/actions/setup-android-toolchain
-      - uses: ./.github/actions/setup-emscripten-toolchain
-      - name: Test the worker
-        run: node --test lib/native/src/test/js/tiffcore-glue.test.mjs
-      - name: Run browser tests
-        run: ./gradlew --max-workers=2 :lib:core:wasmJsTest :sample:webApp:wasmJsTest
-      - name: Build the web app
-        run: ./gradlew --max-workers=2 :sample:webApp:wasmJsBrowserDistribution
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
-        with:
-          path: sample/webApp/build/dist/wasmJs/productionExecutable
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.maven.publish)
 }
 
-version = System.getenv("VERSION") ?: "3.0.0-SNAPSHOT"
+version = System.getenv("VERSION") ?: "4.0.0-SNAPSHOT"
 
 val skipAndroidNativeBuild = System.getenv("TIFFRENDERER_SKIP_ANDROID_NATIVE_BUILD") == "true"
 val prebuiltJniLibsDir = System.getenv("TIFFRENDERER_PREBUILT_JNI_LIBS_DIR")
