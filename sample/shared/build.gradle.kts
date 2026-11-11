@@ -16,6 +16,7 @@ kotlin {
         namespace = "io.github.lucf15.tiffrenderer.sample.shared"
         compileSdk = libs.versions.androidCompileSdk.get().toInt()
         minSdk = libs.versions.androidMinSdk.get().toInt()
+        androidResources.enable = true
     }
 
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->

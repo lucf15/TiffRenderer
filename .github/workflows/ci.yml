@@ -91,6 +91,8 @@ jobs:
           retention-days: 1
 
       - uses: ./.github/actions/run-android-instrumented-tests
+        with:
+          gradle-task: ":lib:core:connectedAndroidDeviceTest :sample:androidApp:connectedDebugAndroidTest"
 
   build-jvm:
     needs: validate-wrapper
@@ -189,7 +191,7 @@ jobs:
   build-ios:
     needs: validate-wrapper
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: read
       id-token: write
@@ -209,6 +211,12 @@ jobs:
 
       - name: Build and validate the Swift package
         run: ./scripts/build-swift-package.sh
+
+      - name: Build sample iOS app
+        run: >-
+          xcodebuild -project sample/iosApp/iosApp.xcodeproj -scheme iosApp
+          -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/tiff-sample-ios" CODE_SIGNING_ALLOWED=NO build
 
       - name: Checksum the iOS native libs this job just built and tested
         shell: bash
