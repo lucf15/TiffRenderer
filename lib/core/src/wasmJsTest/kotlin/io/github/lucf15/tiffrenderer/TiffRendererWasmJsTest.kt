@@ -1,11 +1,20 @@
+@file:OptIn(ExperimentalWasmJsInterop::class)
+
 package io.github.lucf15.tiffrenderer
 
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertContentEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import org.khronos.webgl.ArrayBuffer
+import org.khronos.webgl.Uint8Array
+import org.khronos.webgl.get
+import org.w3c.files.Blob
 
 /** Runs the real Worker/Emscripten decode path in a headless browser (see `wasmJs { browser {
  * testTask { useKarma { useChromeHeadless() } } } }` in `lib/core/build.gradle.kts`), since
@@ -14,6 +23,79 @@ import kotlinx.coroutines.test.runTest
  * decodes a picked file's `data:` URL. */
 @OptIn(ExperimentalEncodingApi::class)
 class TiffRendererWasmJsTest {
+    @Test
+    fun blobSourceDecodesInTheWorkerAndReleasesTheInput() = runTest {
+        val source = TiffSource.fromBlob(blobFromBase64(SINGLE_PAGE_RGB_TIF_BASE64))
+
+        TiffRenderer.open(source).use { renderer ->
+
+            assertEquals(1, renderer.pageCount())
+            renderer.openPage(0).use { page ->
+                val bitmap = createTiffBitmap(32, 24)
+                page.render(bitmap)
+                assertEquals(0xFF8040C8.toInt(), bitmap.pixelAt(0, 0))
+            }
+        }
+        TiffRenderer.open(source).use { assertEquals(1, it.pageCount()) }
+    }
+
+    @Test
+    fun invalidBlobSourcesFailWithoutPoisoningTheInputDescription() = runTest {
+        val invalid = TiffSource.fromBlob(blobFromBase64("AAAA"))
+        repeat(2) { assertFailsWith<TiffIOException> { TiffRenderer.open(invalid) } }
+    }
+
+    @Test
+    fun blankBitmapAndByteExportsHaveIndependentStorage() {
+        val bitmap = createTiffBitmap(2, 2)
+        assertContentEquals(ByteArray(16), bitmap.copyPixels())
+        fillBuffer(bitmap.asArrayBuffer(), 127)
+        val exported = bitmap.copyPixels()
+        exported[0] = 0
+        assertEquals(127.toByte(), bitmap.copyPixels()[0])
+        assertContentEquals(ByteArray(16), createTiffBitmap(2, 2).copyPixels())
+    }
+
+    @Test
+    fun clippedRenderPreservesExistingPixelsAndFailedRenderPreservesTheBuffer() = runTest {
+        TiffRenderer.open(TiffSource.fromByteArray(Base64.decode(SINGLE_PAGE_RGB_TIF_BASE64))).use { renderer ->
+            renderer.openPage(0).use { page ->
+                val bitmap = createTiffBitmap(32, 24)
+                fillBuffer(bitmap.asArrayBuffer(), 77)
+                page.render(bitmap, destClip = TiffRect(8, 6, 24, 18))
+                val pixels = Uint8Array(bitmap.asArrayBuffer())
+                for (y in 0 until 24) {
+                    for (x in 0 until 32) {
+                        val expected = if (x in 8 until 24 && y in 6 until 18) listOf(128, 64, 200, 255)
+                            else listOf(77, 77, 77, 77)
+                        for (channel in 0..3) {
+                            assertEquals(expected[channel], pixels[(y * 32 + x) * 4 + channel].toInt() and 0xFF,
+                                "pixel ($x, $y), channel $channel")
+                        }
+                    }
+                }
+                val before = bitmap.copyPixels()
+                assertFailsWith<IllegalArgumentException> {
+                    page.render(bitmap, transform = TiffTransform(FloatArray(6)))
+                }
+                assertContentEquals(before, bitmap.copyPixels())
+            }
+        }
+    }
+
+    @Test
+    fun transformedRenderLeavesNewBitmapMarginsTransparent() = runTest {
+        TiffRenderer.open(TiffSource.fromByteArray(Base64.decode(SINGLE_PAGE_RGB_TIF_BASE64))).use { renderer ->
+            renderer.openPage(0).use { page ->
+                val bitmap = createTiffBitmap(40, 32)
+                page.render(bitmap, transform = TiffTransform(floatArrayOf(1f, 0f, 4f, 0f, 1f, 3f)))
+                assertEquals(0, bitmap.pixelAt(0, 0))
+                assertEquals(0, bitmap.pixelAt(39, 31))
+                assertEquals(0xFF8040C8.toInt(), bitmap.pixelAt(5, 4))
+            }
+        }
+    }
+
     @Test
     fun opensDecodesAndClosesThroughTheRealWorker() = runTest {
         val renderer = TiffRenderer.open(TiffSource.fromByteArray(Base64.decode(SINGLE_PAGE_RGB_TIF_BASE64)))
@@ -26,7 +108,7 @@ class TiffRendererWasmJsTest {
             val bitmap = createTiffBitmap(page.width, page.height)
             page.render(bitmap)
 
-            val bytes = bitmap.toByteArray()
+            val bytes = bitmap.copyPixels()
             assertEquals(page.width * page.height * 4, bytes.size)
             assertTrue(bytes.any { it != 0.toByte() }, "decoded pixels should not be all zero")
             for (i in bytes.indices step 4) {
@@ -53,7 +135,7 @@ class TiffRendererWasmJsTest {
             val bitmap = createTiffBitmap(page.width, page.height)
             page.render(bitmap)
 
-            val bytes = bitmap.toByteArray()
+            val bytes = bitmap.copyPixels()
             assertEquals(page.width * page.height * 4, bytes.size)
             assertTrue(bytes.any { it != 0.toByte() }, "decoded pixels should not be all zero")
         }
@@ -61,6 +143,10 @@ class TiffRendererWasmJsTest {
         renderer.close()
     }
 }
+
+private fun fillBuffer(buffer: ArrayBuffer, value: Int): Unit = js("new Uint8Array(buffer).fill(value)")
+
+private fun blobFromBase64(base64: String): Blob = js("new Blob([Uint8Array.fromBase64(base64)])")
 
 private const val SINGLE_PAGE_RGB_TIF_BASE64 =
     "SUkqAAgAAAAJAAABAwABAAAAIAAAAAEBAwABAAAAGAAAAAIBAwABAAAACAAAAAMBAwABAAAAAQAAAAYBAwABAAAAAgAAABEBBAABAAAAegAAABUBAwABAAAA" +

@@ -5,7 +5,7 @@ package io.github.lucf15.tiffrenderer
 private const val TIFFCORE_RENDER_MODE_DISPLAY = 1
 private const val TIFFCORE_RENDER_MODE_PRINT = 2
 
-internal fun TiffRenderMode.toNativeMode(): Int = when (this) {
-    TiffRenderMode.FOR_DISPLAY -> TIFFCORE_RENDER_MODE_DISPLAY
-    TiffRenderMode.FOR_PRINT -> TIFFCORE_RENDER_MODE_PRINT
+internal fun TiffSampling.toNativeMode(): Int = when (this) {
+    TiffSampling.SMOOTH -> TIFFCORE_RENDER_MODE_DISPLAY
+    TiffSampling.NEAREST -> TIFFCORE_RENDER_MODE_PRINT
 }

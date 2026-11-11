@@ -32,7 +32,7 @@ class TiffCoreHandleCloseRaceTest {
                     try {
                         runBlocking {
                             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
-                            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                            page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                         }
                     } catch (e: IllegalStateException) {
                         // Expected once close() wins the race.
@@ -65,9 +65,9 @@ class TiffCoreHandleCloseRaceTest {
         // guard, which intentionally throws on a public double-close) to prove the native-level
         // idempotency the lock-guarded pointer zeroing is meant to provide.
         val source = Fixtures.open("single_page_rgb.tif")
-        val handle = TiffCoreBinding.open(source, defaultTiffDispatcher)
+        val handle = TiffCoreBinding.open(source.acquire(), defaultTiffDispatcher)
         TiffCoreBinding.close(handle, defaultTiffDispatcher)
         TiffCoreBinding.close(handle, defaultTiffDispatcher)
-        source.release()
+
     }
 }

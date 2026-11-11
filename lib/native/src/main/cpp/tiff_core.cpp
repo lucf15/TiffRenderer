@@ -24,6 +24,8 @@
 #include <cstdio>
 #include <cstring>
 #include <new>
+#include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -214,6 +216,14 @@ struct TiffCoreDocument {
     uint32_t cachedHeight = 0;
     bool cachedPartial = false;
     std::vector<uint32_t> cachedRaster;
+    uint64_t inputBytes = 0;
+    uint64_t maxDecodedBytes = 128ULL * 1024 * 1024;
+    uint64_t maxWorkingBytes = 256ULL * 1024 * 1024;
+    ~TiffCoreDocument() noexcept {
+        if (ioKind == TiffIoKind::kFd) tiffrenderer::closeTiff(tiff);
+        else if (ioKind == TiffIoKind::kMemory) tiffrenderer::closeMemoryTiff(tiff);
+        else TIFFClose(tiff);
+    }
 };
 
 namespace {
@@ -238,7 +248,7 @@ bool decodePage(TIFF* tiff, int32_t pageIndex, uint32_t* outWidth, uint32_t* out
     uint32_t height = 0;
     TIFFGetField(tiff, TIFFTAG_IMAGEWIDTH, &width);
     TIFFGetField(tiff, TIFFTAG_IMAGELENGTH, &height);
-    if (width == 0 || height == 0) {
+    if (width == 0 || height == 0 || width > INT32_MAX || height > INT32_MAX) {
         fillErrBuf(errBuf, errBufLen, "invalid TIFF page dimensions");
         return false;
     }
@@ -276,8 +286,23 @@ bool decodePage(TIFF* tiff, int32_t pageIndex, uint32_t* outWidth, uint32_t* out
 }  // namespace
 
 void tiffcore_global_init(void) {
-    TIFFSetErrorHandler(errorHandler);
-    TIFFSetWarningHandler(warningHandler);
+
+}
+
+namespace tiffrenderer {
+OpenOptions openOptions() {
+    OpenOptions options(TIFFOpenOptionsAlloc(), TIFFOpenOptionsFree);
+    if (!options) throw std::bad_alloc();
+    TIFFOpenOptionsSetMaxSingleMemAlloc(options.get(), 32 * 1024 * 1024);
+    TIFFOpenOptionsSetMaxCumulatedMemAlloc(options.get(), 32 * 1024 * 1024);
+    TIFFOpenOptionsSetErrorHandlerExtR(options.get(), [](TIFF*, void*, const char* module, const char* format, va_list args) -> int {
+        errorHandler(module, format, args); return 1;
+    }, nullptr);
+    TIFFOpenOptionsSetWarningHandlerExtR(options.get(), [](TIFF*, void*, const char* module, const char* format, va_list args) -> int {
+        warningHandler(module, format, args); return 1;
+    }, nullptr);
+    return options;
+}
 }
 
 namespace {
@@ -303,7 +328,14 @@ TiffCoreStatus wrapOpenedTiff(TIFF* tiff, TiffIoKind ioKind, TiffCoreDocument** 
         return TIFFCORE_ERROR_IO;
     }
     try {
+        const auto inputSize = TIFFGetSizeProc(tiff)(TIFFClientdata(tiff));
+        if (inputSize > 256ULL * 1024 * 1024) {
+            closeByKind(tiff, ioKind);
+            fillErrBuf(errBuf, errBufLen, "input exceeds native limit");
+            return TIFFCORE_ERROR_LIMIT;
+        }
         *outDoc = new TiffCoreDocument(tiff, ioKind);
+        if (ioKind == TiffIoKind::kMemory) (*outDoc)->inputBytes = inputSize;
         return TIFFCORE_OK;
     } catch (const std::exception&) {
         closeByKind(tiff, ioKind);
@@ -346,7 +378,8 @@ TiffCoreStatus tiffcore_open_path(const char* utf8Path, TiffCoreDocument** outDo
     }
     gLastError.clear();
     try {
-        TIFF* tiff = TIFFOpen(utf8Path, "r");
+        auto options = tiffrenderer::openOptions();
+        TIFF* tiff = TIFFOpenExt(utf8Path, "r", options.get());
         return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
     } catch (...) {
         fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
@@ -367,7 +400,8 @@ TiffCoreStatus tiffcore_open_path_w(const wchar_t* utf16Path, TiffCoreDocument**
     }
     gLastError.clear();
     try {
-        TIFF* tiff = TIFFOpenW(utf16Path, "r");
+        auto options = tiffrenderer::openOptions();
+        TIFF* tiff = TIFFOpenWExt(utf16Path, "r", options.get());
         return wrapOpenedTiff(tiff, TiffIoKind::kPath, outDoc, errBuf, errBufLen);
     } catch (...) {
         fillErrBuf(errBuf, errBufLen, "out of memory opening TIFF");
@@ -404,22 +438,40 @@ void tiffcore_close(TiffCoreDocument* doc) {
     if (doc == nullptr) {
         return;
     }
-    try {
-        closeByKind(doc->tiff, doc->ioKind);
-        delete doc;
-    } catch (...) {
-        TIFFCORE_LOGE("tiffcore_close: unexpected exception, leaking the document handle");
+    delete doc;
+}
+
+TiffCoreStatus tiffcore_set_limits(TiffCoreDocument* doc, uint64_t decoded, uint64_t working, char* errBuf, size_t errBufLen) {
+    gLastError.clear();
+    if (!doc || decoded < 4 || decoded > 256ULL * 1024 * 1024 || working < 4 || working > 512ULL * 1024 * 1024) {
+        fillErrBuf(errBuf, errBufLen, "invalid native memory limits");
+        return TIFFCORE_ERROR_INVALID_ARG;
     }
+    doc->maxDecodedBytes = decoded;
+    doc->maxWorkingBytes = working;
+    return TIFFCORE_OK;
+}
+
+bool requireBudget(TiffCoreDocument* doc, uint64_t raster, uint64_t destination, bool retaining, char* errBuf, size_t errBufLen) {
+    const uint64_t cache = doc->cachedRaster.size() * sizeof(uint32_t);
+    const uint64_t peak = doc->inputBytes + 32ULL * 1024 * 1024 + cache + raster + (retaining ? 0 : raster / 3) + destination;
+    if (raster > doc->maxDecodedBytes || peak > doc->maxWorkingBytes) {
+        fillErrBuf(errBuf, errBufLen, "native memory budget exceeded");
+        return false;
+    }
+    return true;
 }
 
 int32_t tiffcore_get_page_count(TiffCoreDocument* doc) {
     if (doc == nullptr) {
         return 0;
     }
+    gLastError.clear();
     try {
-        return static_cast<int32_t>(TIFFNumberOfDirectories(doc->tiff));
+        const auto count = TIFFNumberOfDirectories(doc->tiff);
+        return gLastError.empty() ? static_cast<int32_t>(count) : -1;
     } catch (...) {
-        return 0;
+        return -1;
     }
 }
 
@@ -449,7 +501,7 @@ TiffCoreStatus tiffcore_open_page(TiffCoreDocument* doc, int32_t pageIndex, uint
         uint32_t height = 0;
         TIFFGetField(tiff, TIFFTAG_IMAGEWIDTH, &width);
         TIFFGetField(tiff, TIFFTAG_IMAGELENGTH, &height);
-        if (width == 0 || height == 0) {
+        if (width == 0 || height == 0 || width > INT32_MAX || height > INT32_MAX) {
             fillErrBuf(errBuf, errBufLen, "invalid TIFF page dimensions");
             return TIFFCORE_ERROR_IO;
         }
@@ -475,6 +527,11 @@ TiffCoreStatus tiffcore_retain_raster(TiffCoreDocument* doc, int32_t pageIndex, 
         uint32_t height;
         std::vector<uint32_t> raster;
         bool partial = false;
+        TIFFSetDirectory(doc->tiff, static_cast<tdir_t>(pageIndex));
+        uint32_t w = 0, h = 0;
+        TIFFGetField(doc->tiff, TIFFTAG_IMAGEWIDTH, &w);
+        TIFFGetField(doc->tiff, TIFFTAG_IMAGELENGTH, &h);
+        if (!requireBudget(doc, static_cast<uint64_t>(w) * h * 4, 0, true, errBuf, errBufLen)) return TIFFCORE_ERROR_LIMIT;
         if (!decodePage(doc->tiff, pageIndex, &width, &height, &raster, &partial, errBuf,
                     errBufLen)) {
             return TIFFCORE_ERROR_IO;
@@ -508,7 +565,7 @@ void tiffcore_release_raster(TiffCoreDocument* doc) {
 }
 
 TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, uint32_t* dstPixels,
-        int32_t dstStridePixels, int32_t dstWidth, int32_t dstHeight, int32_t clipLeft,
+        size_t dstByteCount, int32_t dstStridePixels, int32_t dstWidth, int32_t dstHeight, int32_t clipLeft,
         int32_t clipTop, int32_t clipRight, int32_t clipBottom, const float matrix[6],
         TiffCoreRenderMode renderMode, char* errBuf, size_t errBufLen) {
     // Cleared before any fillErrBuf call below, including the early-return validations: fillErrBuf
@@ -527,7 +584,9 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
         fillErrBuf(errBuf, errBufLen, "page index cannot be negative");
         return TIFFCORE_ERROR_INVALID_ARG;
     }
-    if (dstStridePixels < dstWidth) {
+    if (!matrix || dstWidth <= 0 || dstHeight <= 0 || dstStridePixels < dstWidth
+            || static_cast<uint64_t>(dstStridePixels) * dstHeight > dstByteCount / 4
+            || (renderMode != TIFFCORE_RENDER_MODE_DISPLAY && renderMode != TIFFCORE_RENDER_MODE_PRINT)) {
         fillErrBuf(errBuf, errBufLen, "dstStridePixels cannot be smaller than dstWidth");
         return TIFFCORE_ERROR_INVALID_ARG;
     }
@@ -550,6 +609,16 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
             return TIFFCORE_ERROR_INVALID_ARG;
         }
 
+        if (!TIFFSetDirectory(doc->tiff, static_cast<tdir_t>(pageIndex))) {
+            fillErrBuf(errBuf, errBufLen, "cannot seek to TIFF page");
+            return TIFFCORE_ERROR_IO;
+        }
+        uint32_t w = 0, h = 0;
+        TIFFGetField(doc->tiff, TIFFTAG_IMAGEWIDTH, &w);
+        TIFFGetField(doc->tiff, TIFFTAG_IMAGELENGTH, &h);
+        const bool cached = doc->cachedPageIndex == pageIndex;
+        const uint64_t rasterBytes = static_cast<uint64_t>(w) * h * 4;
+        if (!requireBudget(doc, cached ? 0 : rasterBytes, dstByteCount + (cached ? rasterBytes / 3 : 0), false, errBuf, errBufLen)) return TIFFCORE_ERROR_LIMIT;
         // Reuse the retainRaster() cache instead of redecoding if it matches this page.
         uint32_t srcWidth;
         uint32_t srcHeight;
@@ -615,7 +684,7 @@ TiffCoreStatus tiffcore_render_page(TiffCoreDocument* doc, int32_t pageIndex, ui
                 float srcY;
                 inverse.apply(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f, &srcX,
                         &srcY);
-                if (srcX < 0 || srcY < 0 || srcX >= iSrcWidth || srcY >= iSrcHeight) {
+                if (!std::isfinite(srcX) || !std::isfinite(srcY) || srcX < 0 || srcY < 0 || srcX >= iSrcWidth || srcY >= iSrcHeight) {
                     // Outside the source page: leave the destination pixel untouched (same
                     // contract as PdfRenderer.Page#render).
                     continue;

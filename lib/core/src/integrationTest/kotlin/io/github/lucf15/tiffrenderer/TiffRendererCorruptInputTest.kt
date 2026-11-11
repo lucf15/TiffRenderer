@@ -9,7 +9,7 @@ import kotlinx.coroutines.test.runTest
 
 class TiffRendererCorruptInputTest {
 
-    private suspend fun open(name: String) = TiffRenderer.open(Fixtures.open(name), Dispatchers.Unconfined)
+    private suspend fun open(name: String) = TiffRenderer.open(Fixtures.open(name), TiffOptions(decodePolicy = TiffDecodePolicy.ALLOW_PARTIAL, cacheBytes = 1024 * 1024))
 
     @Test
     fun constructor_garbageBytes_throwsTiffIOException() = runTest {
@@ -26,7 +26,7 @@ class TiffRendererCorruptInputTest {
             val bitmap = createTiffBitmap(4, 4)
             try {
                 assertFailsWith<TiffIOException> {
-                    page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                    page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                 }
             } finally {
                 page.close()
@@ -53,7 +53,7 @@ class TiffRendererCorruptInputTest {
             val bitmap = createTiffBitmap(page.width, page.height)
             try {
                 assertFailsWith<TiffIOException> {
-                    page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                    page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                 }
             } finally {
                 page.close()
@@ -74,9 +74,9 @@ class TiffRendererCorruptInputTest {
             val bitmap = createTiffBitmap(page.width, page.height)
             var partialDecodeCallbacks = 0
             try {
-                // FOR_PRINT (nearest-neighbor) at 1:1 scale so each row maps to its own source row,
+                // NEAREST (nearest-neighbor) at 1:1 scale so each row maps to its own source row,
                 // with no bilinear blending across the strip boundaries being asserted below.
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_PRINT) { partialDecodeCallbacks++ }
+                page.render(bitmap, renderMode = TiffSampling.NEAREST) { partialDecodeCallbacks++ }
             } finally {
                 page.close()
             }
@@ -104,7 +104,7 @@ class TiffRendererCorruptInputTest {
             var renderWasPartial = false
             try {
                 page.retainRaster { retainWasPartial = true }
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_PRINT) { renderWasPartial = true }
+                page.render(bitmap, renderMode = TiffSampling.NEAREST) { renderWasPartial = true }
             } finally {
                 page.close()
             }
@@ -126,7 +126,7 @@ class TiffRendererCorruptInputTest {
             val bitmap = createTiffBitmap(page.width, page.height)
             var partialDecodeCallbacks = 0
             try {
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY) { partialDecodeCallbacks++ }
+                page.render(bitmap, renderMode = TiffSampling.SMOOTH) { partialDecodeCallbacks++ }
             } finally {
                 page.close()
             }

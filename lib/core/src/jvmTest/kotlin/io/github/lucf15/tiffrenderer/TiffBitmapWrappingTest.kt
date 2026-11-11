@@ -15,7 +15,7 @@ class TiffBitmapWrappingTest {
             repeat(5) {
                 renderer.openPage(0).use { page ->
                     val bitmap = TiffBitmap.wrapping(buffer, 32, 24)
-                    page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                    page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                     assertEquals(argb(255, 128, 64, 200), bitmap.pixelAt(0, 0))
                 }
             }
@@ -47,8 +47,8 @@ class TiffBitmapWrappingTest {
             val arena = ByteBuffer.allocateDirect(imageBytes * 3)
             renderer.openPage(0).use { page ->
                 val bitmap = TiffBitmap.wrapping(arena, 32, 24)
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
-                assertEquals(imageBytes, bitmap.toByteArray().size)
+                page.render(bitmap, renderMode = TiffSampling.SMOOTH)
+                assertEquals(imageBytes, bitmap.copyPixels().size)
             }
         }
     }
@@ -64,7 +64,7 @@ class TiffBitmapWrappingTest {
 
             renderer.openPage(0).use { page ->
                 val bitmap = TiffBitmap.wrapping(arena, 32, 24)
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                 assertEquals(argb(255, 128, 64, 200), bitmap.pixelAt(0, 0))
             }
 
@@ -89,9 +89,9 @@ class TiffBitmapWrappingTest {
 
             renderer.openPage(0).use { page ->
                 val bitmap = TiffBitmap.wrapping(arena, 32, 24)
-                page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+                page.render(bitmap, renderMode = TiffSampling.SMOOTH)
                 assertEquals(argb(255, 128, 64, 200), bitmap.pixelAt(0, 0))
-                assertEquals(imageBytes, bitmap.toByteArray().size)
+                assertEquals(imageBytes, bitmap.copyPixels().size)
             }
 
             // arena.get(int) checks the buffer's own limit, so read through a duplicate with it restored.

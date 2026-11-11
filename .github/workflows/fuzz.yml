@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: Fuzzing duration in seconds (1–1800)
+        type: number
+        default: 1800
 
 permissions:
   contents: read
@@ -19,10 +24,13 @@ jobs:
 
       - name: Install a Clang with the libFuzzer runtime (Apple's Xcode clang doesn't ship one)
         run: |
-          sudo apt-get update && sudo apt-get install -y clang llvm
+          sudo apt-get update && sudo apt-get install -y clang llvm cmake libz-dev
           command -v llvm-symbolizer || sudo ln -s "$(find /usr -name 'llvm-symbolizer-*' 2>/dev/null | sort -V | tail -n1)" /usr/bin/llvm-symbolizer
 
-      - uses: ./.github/actions/setup-android-toolchain
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Configure and build tiff_fuzz
         working-directory: lib/native/src/main/cpp
@@ -30,7 +38,7 @@ jobs:
           cmake -S . -B build-fuzz -DTIFFRENDERER_FUZZ=ON \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DJAVA_HOME="${JAVA_HOME}"
-          cmake --build build-fuzz --target tiff_fuzz -j
+          cmake --build build-fuzz --target tiff_fuzz -j 2
 
       - name: Restore the accumulated fuzz corpus
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -46,7 +54,9 @@ jobs:
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           ASAN_OPTIONS: symbolize=1
+          FUZZ_SECONDS: ${{ inputs.duration_seconds || 1800 }}
         run: |
+          [[ "$FUZZ_SECONDS" =~ ^[0-9]+$ ]] && [ "$FUZZ_SECONDS" -ge 1 ] && [ "$FUZZ_SECONDS" -le 1800 ]
           mkdir -p /tmp/fuzz-artifacts /tmp/fuzz-corpus
           pad=$(grep -oP 'kControlBytes = \K[0-9]+' fuzz/tiff_fuzz.cpp)
           for f in "${GITHUB_WORKSPACE}"/lib/core/src/commonTest/resources/*.tif "${GITHUB_WORKSPACE}"/lib/core/src/commonTest/resources/*.bin; do
@@ -57,7 +67,7 @@ jobs:
             head -c "$pad" /dev/zero >> "$dest"
           done
           ./build-fuzz/tiff_fuzz -fork=1 -ignore_crashes=1 -ignore_ooms=1 -ignore_timeouts=1 \
-            -max_total_time=1800 -rss_limit_mb=4096 \
+            -max_total_time="$FUZZ_SECONDS" -rss_limit_mb=4096 \
             -artifact_prefix=/tmp/fuzz-artifacts/ /tmp/fuzz-corpus
 
       - name: Upload crashers

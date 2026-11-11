@@ -80,3 +80,10 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+## Inter (sample app)
+
+[Inter](https://github.com/rsms/inter), Copyright 2016 The Inter Project Authors,
+is distributed under the SIL Open Font License 1.1. The complete license accompanies
+the fonts in `sample/shared/src/commonMain/composeResources/files/Inter-LICENSE.txt`.

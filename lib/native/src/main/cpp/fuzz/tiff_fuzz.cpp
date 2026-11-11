@@ -91,7 +91,7 @@ void fuzzOneDocument(const uint8_t* data, size_t size) {
             tiffcore_retain_raster(doc, pageIndex, errBuf, sizeof(errBuf));
         }
 
-        tiffcore_render_page(doc, pageIndex, dst.data(), dstStride, kDstSize, kDstSize, clipLeft, clipTop,
+        tiffcore_render_page(doc, pageIndex, dst.data(), dst.size() * sizeof(uint32_t), dstStride, kDstSize, kDstSize, clipLeft, clipTop,
                 clipRight, clipBottom, matrix, renderMode, errBuf, sizeof(errBuf));
 
         if (!retainBeforeRender) {

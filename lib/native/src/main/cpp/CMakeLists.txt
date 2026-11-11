@@ -8,6 +8,13 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 option(TIFFRENDERER_WERROR "Fail the build on any -Wall/-Wextra warning in this project's own targets (not vendored third_party code)" OFF)
 option(TIFFRENDERER_FUZZ "Build the tiff_fuzz libFuzzer harness, ASan/UBSan-instrumented (Clang only)" OFF)
 
+option(TIFFRENDERER_NATIVE_TESTS "Build native safety tests" OFF)
+option(TIFFRENDERER_SANITIZERS "Enable address and undefined behavior sanitizers" OFF)
+if(TIFFRENDERER_SANITIZERS AND NOT TIFFRENDERER_FUZZ)
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -g)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 if(TIFFRENDERER_FUZZ)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message(FATAL_ERROR "TIFFRENDERER_FUZZ requires Clang (libFuzzer/-fsanitize=fuzzer)")
@@ -236,7 +243,7 @@ if(EMSCRIPTEN)
         -sEXPORT_ES6=1
         -sEXPORT_NAME=createTiffCoreModule
         -sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPU32,HEAPF32,UTF8ToString
-        -sEXPORTED_FUNCTIONS=_malloc,_free,_tiffcore_global_init,_tiffcore_open_memory,_tiffcore_close,_tiffcore_get_page_count,_tiffcore_open_page,_tiffcore_render_page,_tiffcore_retain_raster,_tiffcore_release_raster
+        -sEXPORTED_FUNCTIONS=_malloc,_free,_tiffcore_global_init,_tiffcore_open_memory,_tiffcore_close,_tiffcore_set_limits,_tiffcore_get_page_count,_tiffcore_open_page,_tiffcore_render_page,_tiffcore_retain_raster,_tiffcore_release_raster
         -sALLOW_MEMORY_GROWTH=1
         -sENVIRONMENT=web
     )
@@ -248,4 +255,12 @@ if(TIFFRENDERER_FUZZ)
     add_executable(tiff_fuzz fuzz/tiff_fuzz.cpp)
     target_link_libraries(tiff_fuzz PRIVATE tiffrenderer_core)
     target_link_options(tiff_fuzz PRIVATE -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined)
+endif()
+
+if(TIFFRENDERER_NATIVE_TESTS)
+    enable_testing()
+    add_executable(tiff_safety_tests ../../test/cpp/safety_test.cpp)
+    target_include_directories(tiff_safety_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(tiff_safety_tests PRIVATE tiffrenderer_core)
+    add_test(NAME native_safety COMMAND tiff_safety_tests ${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/src/commonTest/resources)
 endif()

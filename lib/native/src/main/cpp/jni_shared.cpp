@@ -49,6 +49,9 @@ void throwForStatus(JNIEnv* env, TiffCoreStatus status, const char* errBuf,
         const char* fallbackMessage) {
     const char* message = (errBuf != nullptr && errBuf[0] != '\0') ? errBuf : fallbackMessage;
     switch (status) {
+        case TIFFCORE_ERROR_LIMIT:
+            throwException(env, "io/github/lucf15/tiffrenderer/NativeTiffLimitException", message);
+            break;
         case TIFFCORE_ERROR_INVALID_ARG:
             throwException(env, "java/lang/IllegalArgumentException", message);
             break;
@@ -68,6 +71,13 @@ void nativeClose(JNIEnv* /*env*/, jclass /*clazz*/, jlong documentPtr) {
         return;
     }
     tiffcore_close(asDocument(documentPtr));
+}
+
+void nativeSetLimits(JNIEnv* env, jclass, jlong documentPtr, jlong decoded, jlong working) {
+    if (!requireDocument(env, documentPtr)) return;
+    char error[512] = {};
+    auto status = tiffcore_set_limits(asDocument(documentPtr), decoded, working, error, sizeof(error));
+    if (status != TIFFCORE_OK) throwForStatus(env, status, error, "cannot set limits");
 }
 
 jint nativeGetPageCount(JNIEnv* env, jclass /*clazz*/, jlong documentPtr) {

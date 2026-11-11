@@ -5,7 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -17,6 +16,7 @@ kotlin {
         namespace = "io.github.lucf15.tiffrenderer.sample.shared"
         compileSdk = libs.versions.androidCompileSdk.get().toInt()
         minSdk = libs.versions.androidMinSdk.get().toInt()
+        androidResources.enable = true
     }
 
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
@@ -39,14 +39,30 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
         }
+        jvmTest {
+            resources.srcDir(rootProject.file("lib/core/src/commonTest/resources"))
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
+        }
         commonMain.dependencies {
             implementation(project(":lib:core"))
             implementation(compose.runtime)
+            implementation(compose.components.resources)
             implementation(compose.foundation)
             implementation(compose.ui)
-            implementation(compose.material3)
-            implementation(libs.multiplatform.navigation3.ui)
-            implementation(libs.kotlinx.serialization.core)
+            implementation(libs.compose.unstyled)
+            implementation(libs.compose.indication)
         }
     }
+}
+
+compose.resources {
+    packageOfResClass = "io.github.lucf15.tiffrenderer.sample.resources"
+}
+
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 }

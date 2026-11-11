@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_DIR="${1:-${SCRIPT_DIR}/../../../build/ios}"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
-DEPLOYMENT_TARGET="13.0"
+DEPLOYMENT_TARGET="15.0"
 
 CMAKE_BIN="${TIFFRENDERER_SDK_CMAKE:-}"
 if [[ -z "$CMAKE_BIN" ]]; then

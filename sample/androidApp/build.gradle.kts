@@ -12,6 +12,7 @@ android {
         targetSdk = libs.versions.androidTargetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -44,6 +45,9 @@ kotlin {
 
 dependencies {
   implementation(project(":sample:shared"))
+  androidTestImplementation(libs.junit)
+  androidTestImplementation(libs.androidx.test.ext.junit)
+  androidTestImplementation(libs.androidx.test.runner)
 
   val composeBom = platform(libs.androidx.compose.bom)
   implementation(composeBom)

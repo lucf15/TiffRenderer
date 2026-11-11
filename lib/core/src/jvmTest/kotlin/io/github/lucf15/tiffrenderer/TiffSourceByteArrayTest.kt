@@ -17,7 +17,7 @@ class TiffSourceByteArrayTest {
             val page = renderer.openPage(0)
 
             val bitmap = createTiffBitmap(page.width, page.height)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, renderMode = TiffSampling.SMOOTH)
             assertEquals(argb(255, 128, 64, 200), bitmap.pixelAt(0, 0))
 
             page.close()
@@ -35,6 +35,6 @@ class TiffSourceByteArrayTest {
         val bytes = Resource("single_page_rgb.tif").readBytes()
         val source = TiffSource.fromByteArray(bytes)
         TiffRenderer.open(source).use { }
-        assertNull(source.bytes)
+        TiffRenderer.open(source).use { assertEquals(1, it.pageCount()) }
     }
 }

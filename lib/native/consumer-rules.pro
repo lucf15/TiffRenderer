@@ -2,3 +2,5 @@
 -keepclasseswithmembernames class io.github.lucf15.tiffrenderer.** {
     native <methods>;
 }
+
+-keep class io.github.lucf15.tiffrenderer.NativeTiffLimitException { <init>(java.lang.String); }

@@ -22,25 +22,3 @@ public suspend inline fun <R> TiffRenderer.use(block: suspend (TiffRenderer) -> 
         }
     }
 }
-
-/** [kotlin.io.use] equivalent for [TiffPage]; see [TiffRenderer.use]. */
-public suspend inline fun <R> TiffPage.use(block: suspend (TiffPage) -> R): R {
-    var exception: Throwable? = null
-    try {
-        return block(this)
-    } catch (e: Throwable) {
-        exception = e
-        throw e
-    } finally {
-        val cause = exception
-        if (cause == null) {
-            close()
-        } else {
-            try {
-                close()
-            } catch (closeException: Throwable) {
-                cause.addSuppressed(closeException)
-            }
-        }
-    }
-}

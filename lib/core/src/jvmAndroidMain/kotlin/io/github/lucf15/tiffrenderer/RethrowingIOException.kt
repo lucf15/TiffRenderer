@@ -8,5 +8,8 @@ internal inline fun <T> rethrowingIOException(block: () -> T): T =
     try {
         block()
     } catch (e: IOException) {
-        throw TiffIOException(e.message ?: "TIFF I/O error")
+        val message = e.message ?: "TIFF I/O error"
+        throw TiffIOException(message, if (e is NativeTiffLimitException) TiffError.RESOURCE_LIMIT else TiffError.INVALID_DATA, e)
     }
+
+internal class NativeTiffLimitException(message: String) : IOException(message)

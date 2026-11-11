@@ -47,26 +47,35 @@ import tiffcore.tiffcore_retain_raster
  * themselves. */
 @OptIn(ExperimentalForeignApi::class)
 internal actual object TiffCoreBinding {
-    actual suspend fun open(source: TiffSource, dispatcher: CoroutineDispatcher): TiffCoreHandle =
-        withContext(dispatcher) {
+    actual suspend fun open(source: TiffOpenedSource, dispatcher: CoroutineDispatcher): TiffCoreHandle =
+        acquireTiffHandle(dispatcher, {
             globalInit
             memScoped {
-                val errBuf = allocArray<ByteVar>(ERR_BUF_SIZE)
-                errBuf[0] = 0.toByte()
-                val outDoc = alloc<CPointerVar<TiffCoreDocument>>()
-                val status = tiffcore_open(source.fd, source.size, outDoc.ptr, errBuf, ERR_BUF_SIZE.toULong())
-                if (status != TIFFCORE_OK) {
-                    throwForStatus(status, errBuf, "cannot open TIFF")
-                }
-                TiffCoreHandle(checkNotNull(outDoc.value).rawValue.toLong())
+                val error = allocArray<ByteVar>(ERR_BUF_SIZE)
+                val output = alloc<CPointerVar<TiffCoreDocument>>()
+                val bytes = source.bytes
+                val status = if (bytes != null) {
+                    if (bytes.isEmpty()) throw TiffIOException("Empty TIFF input")
+                    bytes.usePinned { tiffcore.tiffcore_open_memory(it.addressOf(0).reinterpret(), bytes.size.toLong(), output.ptr, error, ERR_BUF_SIZE.toULong()) }
+                } else tiffcore_open(source.fd, source.size, output.ptr, error, ERR_BUF_SIZE.toULong())
+                if (status != TIFFCORE_OK) throwForStatus(status, error, "cannot open TIFF")
+                checkNotNull(output.value).rawValue.toLong()
             }
-        }
+        }, { tiffcore_close(it.asPointer()) })
 
     // NonCancellable: this frees native state, so it must run even if the calling coroutine is
     // already cancelled. A plain withContext(dispatcher) throws immediately without entering the
     // block in that case, leaking the native handle.
     actual suspend fun close(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher) = withContext(dispatcher + NonCancellable) {
         handle.closeOnce { ptr -> tiffcore_close(ptr.asPointer()) }
+    }
+
+    actual suspend fun setLimits(handle: TiffCoreHandle, limits: TiffLimits, dispatcher: CoroutineDispatcher): Unit = withContext(dispatcher) {
+        handle.use { ptr -> memScoped {
+            val error = allocArray<ByteVar>(ERR_BUF_SIZE)
+            val status = tiffcore.tiffcore_set_limits(ptr.asPointer(), limits.maxDecodedBytes.toULong(), limits.maxWorkingBytes.toULong(), error, ERR_BUF_SIZE.toULong())
+            if (status != TIFFCORE_OK) throwForStatus(status, error, "cannot set limits")
+        } }
     }
 
     actual suspend fun getPageCount(handle: TiffCoreHandle, dispatcher: CoroutineDispatcher): Int =
@@ -102,12 +111,12 @@ internal actual object TiffCoreBinding {
         destination: TiffBitmap,
         clip: TiffRect,
         transform: TiffTransform,
-        mode: TiffRenderMode,
+        mode: TiffSampling,
         dispatcher: CoroutineDispatcher,
     ): Boolean = withContext(dispatcher) {
         val nativeMode = when (mode) {
-            TiffRenderMode.FOR_DISPLAY -> TIFFCORE_RENDER_MODE_DISPLAY
-            TiffRenderMode.FOR_PRINT -> TIFFCORE_RENDER_MODE_PRINT
+            TiffSampling.SMOOTH -> TIFFCORE_RENDER_MODE_DISPLAY
+            TiffSampling.NEAREST -> TIFFCORE_RENDER_MODE_PRINT
         }
         handle.use { ptr ->
             memScoped {
@@ -118,6 +127,7 @@ internal actual object TiffCoreBinding {
                         ptr.asPointer(),
                         index,
                         pinned.addressOf(0).reinterpret<UIntVar>(),
+                        (destination.pixels.size.toLong() * 4).toULong(),
                         destination.width,
                         destination.width,
                         destination.height,
@@ -176,6 +186,7 @@ private val globalInit: Unit by lazy { tiffcore_global_init() }
 private fun throwForStatus(status: TiffCoreStatus, errBuf: CPointer<ByteVar>, fallback: String): Nothing {
     val message = errBuf.toKString().ifEmpty { fallback }
     throw when (status) {
+        tiffcore.TIFFCORE_ERROR_LIMIT -> TiffIOException(message, TiffError.RESOURCE_LIMIT)
         TIFFCORE_ERROR_INVALID_ARG -> IllegalArgumentException(message)
         TIFFCORE_ERROR_ILLEGAL_STATE -> IllegalStateException(message)
         else -> TiffIOException(message)

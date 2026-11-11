@@ -7,7 +7,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 internal actual fun openFixtureSource(name: String, bytes: ByteArray): TiffSource =
-    TiffSource.fromParcelFileDescriptor(openFixturePfd(name, bytes))
+    TiffSource.fromByteArray(bytes)
 
 internal fun openFixturePfd(name: String): ParcelFileDescriptor =
     openFixturePfd(name, Resource(name).readBytes())

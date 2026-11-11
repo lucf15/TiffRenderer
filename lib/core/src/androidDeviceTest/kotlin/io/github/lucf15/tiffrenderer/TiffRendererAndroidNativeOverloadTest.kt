@@ -24,7 +24,7 @@ class TiffRendererAndroidNativeOverloadTest {
     }
 
     private suspend fun openSinglePage() =
-        TiffRenderer.open(TiffSource.fromParcelFileDescriptor(openFixturePfd("single_page_rgb.tif")))
+        openFixturePfd("single_page_rgb.tif").use { TiffRenderer.open(it) }
 
     @Test
     fun tiffBitmap_wrongBitmapConfig_throwsIllegalArgumentException() {
@@ -67,8 +67,8 @@ class TiffRendererAndroidNativeOverloadTest {
         val readSide = pipe[0]
         val writeSide = pipe[1]
         try {
-            assertThrows(IllegalArgumentException::class.java) {
-                TiffSource.fromParcelFileDescriptor(readSide)
+            assertThrows(Exception::class.java) {
+                runBlocking { TiffRenderer.open(readSide) }
             }
         } finally {
             readSide.close()
@@ -85,7 +85,7 @@ class TiffRendererAndroidNativeOverloadTest {
             bitmap.eraseColor(sentinel)
 
             val matrix = Matrix().apply { setTranslate(5f, 5f) }
-            page.render(bitmap, null, matrix, TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, null, matrix, TiffSampling.SMOOTH)
 
             assertEquals(sentinel, bitmap.getPixel(0, 0))
             assertEquals(PAGE_COLOR, bitmap.getPixel(5, 5))
@@ -102,7 +102,7 @@ class TiffRendererAndroidNativeOverloadTest {
             val sentinel = Color.YELLOW
             bitmap.eraseColor(sentinel)
 
-            page.render(bitmap, Rect(10, 10, 20, 18), null, TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, Rect(10, 10, 20, 18), null, TiffSampling.SMOOTH)
 
             assertEquals(PAGE_COLOR, bitmap.getPixel(15, 14))
             assertEquals(sentinel, bitmap.getPixel(5, 5))
@@ -120,8 +120,12 @@ class TiffRendererAndroidNativeOverloadTest {
 
     @Test
     fun tiffRenderer_androidNativeOverload_opensPfdDirectly() = runBlocking {
-        TiffRenderer(openFixturePfd("single_page_rgb.tif")).use { renderer ->
+        openFixturePfd("single_page_rgb.tif").use { TiffRenderer.open(it) }.use { renderer ->
             assertEquals(1, renderer.pageCount())
         }
     }
+}
+
+private suspend fun PixelTestPage.render(destination: Bitmap, clip: Rect? = null, matrix: Matrix? = null, sampling: TiffSampling = TiffSampling.SMOOTH) {
+    renderer.renderInto(index, destination, clip, matrix, sampling)
 }

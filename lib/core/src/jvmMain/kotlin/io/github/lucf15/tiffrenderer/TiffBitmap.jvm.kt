@@ -10,7 +10,12 @@ public actual class TiffBitmap private constructor(
     public actual val height: Int,
     internal val buffer: ByteBuffer,
 ) {
-    public companion object {
+    internal actual val renderMutex = kotlinx.coroutines.sync.Mutex()
+
+    public actual companion object {
+        @JvmStatic
+        public actual fun create(width: Int, height: Int): TiffBitmap = createTiffBitmap(width, height)
+
         public operator fun invoke(width: Int, height: Int): TiffBitmap {
             requirePositiveNonOverflowingBitmapDimensions(width, height)
             return TiffBitmap(width, height, ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder()))
@@ -34,23 +39,23 @@ public actual class TiffBitmap private constructor(
 
 /** Escape hatch for UI-layer code that wants the rendered pixels as packed ARGB ints (this
  * library's own [pixelAt] convention), as a copy so callers can't corrupt a page mid-render by
- * holding onto it. Prefer [toByteArray] when raw RGBA8888 bytes suffice; this repacks per pixel. */
+ * holding onto it. Prefer [copyPixels] when raw RGBA8888 bytes suffice; this repacks per pixel. */
 public fun TiffBitmap.toIntArray(): IntArray {
-    val bytes = toByteArray()
+    val bytes = copyPixels()
     return IntArray(width * height) { i -> packArgbFromRgbaBytes(i * 4) { bytes[it] } }
 }
 
 /** Escape hatch for UI-layer code (e.g. `:sample:shared`) that wants the raw RGBA8888 bytes,
  * matching Skia's `ColorType.RGBA_8888` byte order with no per-pixel repacking. Returns a copy
  * via an independent buffer view, so it can't be used to corrupt a page mid-render. */
-public fun TiffBitmap.toByteArray(): ByteArray {
+public actual fun TiffBitmap.copyPixels(): ByteArray {
     val byteCount = width * height * 4
     val bytes = ByteArray(byteCount)
     buffer.duplicate().apply { position(0); limit(byteCount) }.get(bytes)
     return bytes
 }
 
-public actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
+internal actual fun createTiffBitmap(width: Int, height: Int): TiffBitmap = TiffBitmap(width, height)
 
 internal actual fun TiffBitmap.pixelAt(x: Int, y: Int): Int =
     packArgbFromRgbaBytes((y * width + x) * 4) { buffer.get(it) }

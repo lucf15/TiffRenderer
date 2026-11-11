@@ -9,7 +9,13 @@ plugins {
 kotlin {
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
-        browser()
+        browser {
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                }
+            }
+        }
         binaries.executable()
     }
 
@@ -21,6 +27,10 @@ kotlin {
         }
         wasmJsMain {
             resources.srcDir(project(":lib:native").layout.buildDirectory.dir("wasm"))
+        }
+        wasmJsTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

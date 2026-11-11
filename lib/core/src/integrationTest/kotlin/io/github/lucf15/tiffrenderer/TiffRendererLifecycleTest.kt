@@ -3,139 +3,60 @@ package io.github.lucf15.tiffrenderer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlinx.coroutines.Dispatchers
+import kotlin.test.assertTrue
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 
 class TiffRendererLifecycleTest {
-
-    private suspend fun open(name: String) = TiffRenderer.open(Fixtures.open(name), Dispatchers.Unconfined)
-
-    @Test
-    fun constructor_notATiffFile_throwsTiffIOException() = runTest {
-        assertFailsWith<TiffIOException> { open("not_a_tiff.bin") }
-    }
-
-    @Test
-    fun constructor_validFile_reportsCorrectPageCount() = runTest {
-        open("varying_page_dimensions.tif").use { renderer ->
-            assertEquals(3, renderer.pageCount())
+    @Test fun concurrentPagesAndMetadataNeedNoExternalLock() = runTest {
+        TiffRenderer.withDocument(Fixtures.open("varying_page_dimensions.tif")) { document ->
+            val results = (0..2).map { index -> async { document.renderPage(index, RenderSize.fit(128, 128)) } }.awaitAll()
+            assertEquals(3, document.pageCount())
+            assertTrue(results.all { it.image.width <= 128 && it.image.height <= 128 })
         }
     }
-
-    @Test
-    fun getPageCount_afterClose_throwsIllegalStateException() = runTest {
-        val renderer = open("single_page_rgb.tif")
-        renderer.close()
+    @Test fun closeIsIdempotentAndReturnedImagesRemainUsable() = runTest {
+        val renderer = TiffRenderer.open(Fixtures.open("single_page_rgb.tif"))
+        val image = renderer.renderPage(0, RenderSize.Original).image
+        renderer.close(); renderer.close()
+        assertEquals(0xFF8040C8.toInt(), image.pixelAt(0, 0))
         assertFailsWith<IllegalStateException> { renderer.pageCount() }
+        assertFailsWith<IllegalStateException> { renderer.renderPage(0, RenderSize.Original) }
     }
-
-    @Test
-    fun close_calledTwice_throwsIllegalStateException() = runTest {
-        val renderer = open("single_page_rgb.tif")
-        renderer.close()
-        assertFailsWith<IllegalStateException> { renderer.close() }
-    }
-
-    @Test
-    fun close_whilePageOpen_throwsIllegalStateException() = runTest {
-        val renderer = open("single_page_rgb.tif")
-        val page = renderer.openPage(0)
-        assertFailsWith<IllegalStateException> { renderer.close() }
-        page.close()
-        renderer.close()
-    }
-
-    @Test
-    fun openPage_afterClose_throwsIllegalStateException() = runTest {
-        val renderer = open("single_page_rgb.tif")
-        renderer.close()
-        assertFailsWith<IllegalStateException> { renderer.openPage(0) }
-    }
-
-    @Test
-    fun openPage_negativeIndex_throwsIllegalArgumentException() = runTest {
-        open("single_page_rgb.tif").use { renderer ->
-            assertFailsWith<IllegalArgumentException> { renderer.openPage(-1) }
+    @Test fun fitPreservesAspectRatioAndDoesNotUpscaleByDefault() = runTest {
+        TiffRenderer.withDocument(Fixtures.open("single_page_rgb.tif")) { r ->
+            val small = r.renderPage(0, RenderSize.fit(16, 16)).image
+            assertEquals(16, small.width); assertEquals(12, small.height)
+            assertEquals(32, r.renderPage(0, RenderSize.fit(1000, 1000)).image.width)
+            assertEquals(64, r.renderPage(0, RenderSize.fit(64, 64, allowUpscale = true)).image.width)
         }
     }
-
-    @Test
-    fun openPage_indexAtOrPastPageCount_throwsIllegalArgumentException() = runTest {
-        open("single_page_rgb.tif").use { renderer ->
-            assertEquals(1, renderer.pageCount())
-            assertFailsWith<IllegalArgumentException> { renderer.openPage(1) }
-        }
-    }
-
-    @Test
-    fun openPage_indexPastPageCount_withoutPageCountQueriedFirst_stillThrowsAndRendererRecovers() = runTest {
-        // Deliberately doesn't touch renderer.pageCount() first, so _pageCount is still the -1
-        // sentinel when openPage runs: exercises the fallback path that walks the full directory
-        // chain only after TiffCoreBinding.openPage's native seek fails, not the fast path where
-        // the bound is already cached.
-        open("varying_page_dimensions.tif").use { renderer ->
-            assertFailsWith<IllegalArgumentException> { renderer.openPage(5) }
-            // Proves the underlying TIFF* survives a failed TIFFSetDirectory followed by the
-            // TIFFNumberOfDirectories walk: this renderer is still fully usable afterward.
-            val page = renderer.openPage(0)
-            assertEquals(0, page.index)
-            page.close()
-        }
-    }
-
-    @Test
-    fun openPage_whileAnotherPageOpen_throwsIllegalStateException() = runTest {
-        open("varying_page_dimensions.tif").use { renderer ->
-            val page = renderer.openPage(0)
-            assertFailsWith<IllegalStateException> { renderer.openPage(1) }
-            page.close()
-        }
-    }
-
-    @Test
-    fun openPage_afterPreviousPageClosed_succeeds() = runTest {
-        open("varying_page_dimensions.tif").use { renderer ->
-            renderer.openPage(0).close()
-            val second = renderer.openPage(1)
-            assertEquals(1, second.index)
-            second.close()
-        }
-    }
-
-    @Test
-    fun page_close_calledTwice_throwsIllegalStateException() = runTest {
-        open("single_page_rgb.tif").use { renderer ->
-            val page = renderer.openPage(0)
-            page.close()
-            assertFailsWith<IllegalStateException> { page.close() }
-        }
-    }
-
-    @Test
-    fun constructor_sourceAlreadyConsumedBySuccessfulOpen_throwsIllegalStateException() = runTest {
+    @Test fun invalidIndicesAndIndependentSourceReuse() = runTest {
         val source = Fixtures.open("single_page_rgb.tif")
-        TiffRenderer.open(source).use { }
-        assertFailsWith<IllegalStateException> { TiffRenderer.open(source) }
+        repeat(2) { TiffRenderer.withDocument(source) { r ->
+            assertFailsWith<IllegalArgumentException> { r.pageInfo(-1) }
+            assertFailsWith<IllegalArgumentException> { r.renderPage(1, RenderSize.Original) }
+            assertEquals(1, r.pageCount())
+        } }
     }
-
-    @Test
-    fun constructor_sourceAlreadyConsumedByFailedOpen_throwsIllegalStateExceptionOnRetry() = runTest {
-        val source = Fixtures.open("not_a_tiff.bin")
-        assertFailsWith<TiffIOException> { TiffRenderer.open(source) }
-        assertFailsWith<IllegalStateException> { TiffRenderer.open(source) }
+    @Test fun inputOutputAndDecodeBudgetsFailBeforeLargeAllocation() = runTest {
+        val source = Fixtures.open("single_page_rgb.tif")
+        assertFailsWith<TiffIOException> { TiffRenderer.open(source, TiffOptions(limits = TiffLimits(maxInputBytes = 1))) }
+        TiffRenderer.withDocument(source, TiffOptions(limits = TiffLimits(maxOutputBytes = 4))) { r ->
+            assertEquals(TiffError.RESOURCE_LIMIT, assertFailsWith<TiffIOException> { r.renderPage(0, RenderSize.Original) }.reason)
+        }
+        TiffRenderer.withDocument(source, TiffOptions(limits = TiffLimits(maxDecodedBytes = 4))) { r ->
+            assertEquals(TiffError.RESOURCE_LIMIT, assertFailsWith<TiffIOException> { r.renderPage(0, RenderSize.fit(1, 1)) }.reason)
+        }
     }
-
-    @Test
-    fun page_indexWidthHeight_matchPerPageTiffTags() = runTest {
-        open("varying_page_dimensions.tif").use { renderer ->
-            val expectedSizes = arrayOf(10 to 10, 20 to 15, 8 to 40)
-            expectedSizes.forEachIndexed { i, (w, h) ->
-                val page = renderer.openPage(i)
-                assertEquals(i, page.index)
-                assertEquals(w, page.width, "page $i width")
-                assertEquals(h, page.height, "page $i height")
-                page.close()
-            }
+    @Test fun strictPartialDecodeIsAnErrorAndTolerantDecodeReturnsWarnings() = runTest {
+        val source = Fixtures.open("partially_corrupt.tif")
+        TiffRenderer.withDocument(source) { r ->
+            assertEquals(TiffError.PARTIAL_DECODE, assertFailsWith<TiffIOException> { r.renderPage(0, RenderSize.Original) }.reason)
+        }
+        TiffRenderer.withDocument(source, TiffOptions(decodePolicy = TiffDecodePolicy.ALLOW_PARTIAL)) { r ->
+            assertTrue(TiffWarning.PARTIAL_DECODE in r.renderPage(0, RenderSize.Original).warnings)
         }
     }
 }

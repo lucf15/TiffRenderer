@@ -14,21 +14,27 @@ import kotlinx.coroutines.withContext
  * Emscripten-compiled `tiffcore_module.mjs`: wasmJs has no real background-thread dispatcher, so a
  * direct main-thread call would freeze the browser for the decode's whole duration. One Worker per
  * document, not shared, so a crash or [close] can't leave a stale [TiffCoreHandle] aliasing a
- * different, still-live document. Bulk buffers cross as base64 (no fast ByteArray/IntArray bridge
- * on this platform); `dispatcher` is part of the shared [TiffCoreBinding] contract but unused here
+ * different, still-live document. Blob inputs and rendered pixels stay in JS memory.
+ * `dispatcher` is part of the shared [TiffCoreBinding] contract but unused here
  * since awaiting the Worker's response is already the suspension point. */
 @OptIn(ExperimentalEncodingApi::class)
 internal actual object TiffCoreBinding {
-    actual suspend fun open(source: TiffSource, dispatcher: CoroutineDispatcher): TiffCoreHandle {
+    actual suspend fun open(source: TiffOpenedSource, dispatcher: CoroutineDispatcher): TiffCoreHandle {
         val session = createTiffCoreSession()
         try {
             session.ensureLoaded().awaitTiffCore()
-            val bytes = checkNotNull(source.bytes) { "TiffSource bytes already consumed" }
-            val response = session.openMemory(Base64.encode(bytes)).awaitTiffCore()
+            val blob = source.blob
+            val response = if (blob != null) {
+                session.openBlob(blob).awaitTiffCore()
+            } else {
+                val bytes = checkNotNull(source.bytes) { "TiffSource bytes already consumed" }
+                session.openMemory(Base64.encode(bytes)).awaitTiffCore()
+            }
             if (response.status != TIFFCORE_OK) {
                 throwForStatus(response.status, response.message, "cannot open TIFF")
             }
             source.bytes = null
+            source.blob = null
             return TiffCoreHandle(response.doc.toLong(), platformExtra = session)
         } catch (t: Throwable) {
             session.terminate()
@@ -43,6 +49,13 @@ internal actual object TiffCoreBinding {
             handle.closeOnce { doc -> handle.session.close(doc.toInt()).awaitTiffCore() }
         } finally {
             handle.session.terminate()
+        }
+    }
+
+    actual suspend fun setLimits(handle: TiffCoreHandle, limits: TiffLimits, dispatcher: CoroutineDispatcher) {
+        handle.use { doc ->
+            val response = handle.session.setLimits(doc.toInt(), limits.maxDecodedBytes.toDouble(), limits.maxWorkingBytes.toDouble()).awaitTiffCore()
+            if (response.status != TIFFCORE_OK) throwForStatus(response.status, response.message, "cannot set limits")
         }
     }
 
@@ -67,12 +80,12 @@ internal actual object TiffCoreBinding {
         destination: TiffBitmap,
         clip: TiffRect,
         transform: TiffTransform,
-        mode: TiffRenderMode,
+        mode: TiffSampling,
         dispatcher: CoroutineDispatcher,
     ): Boolean {
         val nativeMode = when (mode) {
-            TiffRenderMode.FOR_DISPLAY -> TIFFCORE_RENDER_MODE_DISPLAY
-            TiffRenderMode.FOR_PRINT -> TIFFCORE_RENDER_MODE_PRINT
+            TiffSampling.SMOOTH -> TIFFCORE_RENDER_MODE_DISPLAY
+            TiffSampling.NEAREST -> TIFFCORE_RENDER_MODE_PRINT
         }
         return handle.use { doc ->
             val v = transform.values
@@ -81,15 +94,15 @@ internal actual object TiffCoreBinding {
                 clip.left, clip.top, clip.right, clip.bottom,
                 v[0], v[1], v[2], v[3], v[4], v[5],
                 nativeMode,
+                destination.buffer,
             ).awaitTiffCore()
             if (response.status != TIFFCORE_OK && response.status != TIFFCORE_OK_PARTIAL) {
                 throwForStatus(response.status, response.message, "failed to render TIFF page")
             }
 
-            // Decodes straight into destination.bytes (no intermediate ByteArray, no per-pixel
-            // pack/unpack loop): the Worker already hands back raw RGBA8888 bytes in the exact
-            // layout TiffBitmap stores and Skia's installPixels wants.
-            Base64.decodeIntoByteArray(checkNotNull(response.pixelsBase64), destination.bytes)
+            val pixels = checkNotNull(response.pixels)
+            check(pixels.byteLength == destination.width * destination.height * 4) { "Invalid pixel buffer size" }
+            destination.buffer = pixels.buffer
 
             response.status == TIFFCORE_OK_PARTIAL
         }
@@ -129,12 +142,13 @@ private suspend fun <T : JsAny?> Promise<T>.awaitTiffCore(): T =
     } catch (e: CancellationException) {
         throw e
     } catch (e: RuntimeException) {
-        throw TiffIOException(e.message ?: "tiffcore worker call failed")
+        throw TiffIOException(e.message ?: "tiffcore worker call failed", TiffError.WORKER_UNAVAILABLE, e)
     }
 
 private fun throwForStatus(status: Int, workerMessage: String?, fallback: String): Nothing {
     val message = workerMessage ?: fallback
     throw when (status) {
+        5 -> TiffIOException(message, TiffError.RESOURCE_LIMIT)
         TIFFCORE_ERROR_INVALID_ARG -> IllegalArgumentException(message)
         TIFFCORE_ERROR_ILLEGAL_STATE -> IllegalStateException(message)
         else -> TiffIOException(message)

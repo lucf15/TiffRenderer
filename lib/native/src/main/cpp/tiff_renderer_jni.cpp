@@ -45,6 +45,32 @@ jlong nativeOpen(JNIEnv* env, jclass /*clazz*/, jint fd, jlong size) {
     return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
 }
 
+jlong nativeOpenBytes(JNIEnv* env, jclass /*clazz*/, jbyteArray bytes) {
+    if (bytes == nullptr) {
+        throwException(env, "java/lang/IllegalArgumentException", "bytes cannot be null");
+        return 0;
+    }
+    const jsize length = env->GetArrayLength(bytes);
+
+    jbyte* data = env->GetByteArrayElements(bytes, nullptr);
+    if (data == nullptr) {
+        return 0;
+    }
+
+    TiffCoreDocument* doc = nullptr;
+    char errBuf[kErrBufSize] = {};
+    const TiffCoreStatus status = tiffcore_open_memory(reinterpret_cast<const uint8_t*>(data),
+            static_cast<int64_t>(length), &doc, errBuf, sizeof(errBuf));
+
+    env->ReleaseByteArrayElements(bytes, data, JNI_ABORT);
+
+    if (status != TIFFCORE_OK) {
+        throwForStatus(env, status, errBuf, "cannot open TIFF");
+        return 0;
+    }
+    return static_cast<jlong>(reinterpret_cast<intptr_t>(doc));
+}
+
 jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint pageIndex,
         jobject bitmap, jint clipLeft, jint clipTop, jint clipRight, jint clipBottom,
         jfloatArray matrixValues, jint renderMode) {
@@ -85,7 +111,7 @@ jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint
     // matrix[] is Matrix#getValues() order (9 elements); tiff_core's affine API only needs the
     // first 6 (the row-3 perspective terms are already rejected as non-affine on the Java side).
     const TiffCoreStatus status = tiffcore_render_page(asDocument(documentPtr), pageIndex,
-            reinterpret_cast<uint32_t*>(pixels), static_cast<int32_t>(info.stride) / 4,
+            reinterpret_cast<uint32_t*>(pixels), static_cast<size_t>(info.stride) * info.height, static_cast<int32_t>(info.stride) / 4,
             static_cast<int32_t>(info.width), static_cast<int32_t>(info.height), clipLeft, clipTop,
             clipRight, clipBottom, matrix, static_cast<TiffCoreRenderMode>(renderMode), errBuf,
             sizeof(errBuf));
@@ -108,6 +134,8 @@ jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint
 #define JNI_STR(s) const_cast<char*>(s)
 
 const JNINativeMethod gMethods[] = {
+        {JNI_STR("nativeSetLimits"), JNI_STR("(JJJ)V"), reinterpret_cast<void*>(tiffrenderer::nativeSetLimits)},
+        {JNI_STR("nativeOpenBytes"), JNI_STR("([B)J"), reinterpret_cast<void*>(nativeOpenBytes)},
         {JNI_STR("nativeOpen"), JNI_STR("(IJ)J"), reinterpret_cast<void*>(nativeOpen)},
         {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(tiffrenderer::nativeClose)},
         {JNI_STR("nativeGetPageCount"), JNI_STR("(J)I"),

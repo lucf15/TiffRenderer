@@ -23,7 +23,7 @@ class TiffRendererRenderTest {
             val bitmap = createTiffBitmap(10, 10)
             val tooWide = TiffRect(0, 0, 20, 5)
             assertFailsWith<IllegalArgumentException> {
-                page.render(bitmap, tooWide, null, TiffRenderMode.FOR_DISPLAY)
+                page.render(bitmap, tooWide, null, TiffSampling.SMOOTH)
             }
             page.close()
         }
@@ -36,7 +36,7 @@ class TiffRendererRenderTest {
             page.close()
             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
             assertFailsWith<IllegalStateException> {
-                page.render(bitmap, null, null, TiffRenderMode.FOR_DISPLAY)
+                page.render(bitmap, null, null, TiffSampling.SMOOTH)
             }
         }
     }
@@ -46,7 +46,7 @@ class TiffRendererRenderTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, renderMode = TiffSampling.SMOOTH)
 
             assertEquals(PAGE_COLOR, bitmap.pixelAt(0, 0))
             assertEquals(PAGE_COLOR, bitmap.pixelAt(PAGE_WIDTH - 1, PAGE_HEIGHT - 1))
@@ -60,7 +60,7 @@ class TiffRendererRenderTest {
         openSinglePage().use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_PRINT)
+            page.render(bitmap, renderMode = TiffSampling.NEAREST)
 
             assertEquals(PAGE_COLOR, bitmap.pixelAt(0, 0))
             assertEquals(PAGE_COLOR, bitmap.pixelAt(PAGE_WIDTH - 1, PAGE_HEIGHT - 1))
@@ -75,7 +75,7 @@ class TiffRendererRenderTest {
             val bitmap = createTiffBitmap(64, 48)
 
             val clip = TiffRect(10, 10, 20, 18)
-            page.render(bitmap, clip, null, TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, clip, null, TiffSampling.SMOOTH)
 
             assertEquals(PAGE_COLOR, bitmap.pixelAt(15, 14))
             assertEquals(0, bitmap.pixelAt(5, 5))
@@ -94,7 +94,7 @@ class TiffRendererRenderTest {
             val bitmap = createTiffBitmap(PAGE_WIDTH, PAGE_HEIGHT)
             val zeroScale = TiffTransform(floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f))
             assertFailsWith<IllegalArgumentException> {
-                page.render(bitmap, null, zeroScale, TiffRenderMode.FOR_DISPLAY)
+                page.render(bitmap, null, zeroScale, TiffSampling.SMOOTH)
             }
             page.close()
         }
@@ -109,7 +109,7 @@ class TiffRendererRenderTest {
         TiffRenderer.open(Fixtures.open("checkerboard_fine.tif"), Dispatchers.Unconfined).use { renderer ->
             val page = renderer.openPage(0)
             val bitmap = createTiffBitmap(250, 250)
-            page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, renderMode = TiffSampling.SMOOTH)
 
             assertEquals(argb(255, 0, 0, 0), bitmap.pixelAt(249, 249))
             page.close()
@@ -123,7 +123,7 @@ class TiffRendererRenderTest {
             val bitmap = createTiffBitmap(50, 40)
 
             val translated = TiffTransform(floatArrayOf(1f, 0f, 5f, 0f, 1f, 5f))
-            page.render(bitmap, null, translated, TiffRenderMode.FOR_DISPLAY)
+            page.render(bitmap, null, translated, TiffSampling.SMOOTH)
 
             assertEquals(0, bitmap.pixelAt(0, 0))
             assertEquals(PAGE_COLOR, bitmap.pixelAt(5, 5))

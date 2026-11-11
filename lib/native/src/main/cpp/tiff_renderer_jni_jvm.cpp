@@ -147,7 +147,7 @@ jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint
 
     char errBuf[kErrBufSize] = {};
     const TiffCoreStatus status = tiffcore_render_page(asDocument(documentPtr), pageIndex,
-            reinterpret_cast<uint32_t*>(bufferAddress), dstWidth, dstWidth, dstHeight, clipLeft,
+            reinterpret_cast<uint32_t*>(bufferAddress), static_cast<size_t>(bufferCapacity), dstWidth, dstWidth, dstHeight, clipLeft,
             clipTop, clipRight, clipBottom, matrix, static_cast<TiffCoreRenderMode>(renderMode),
             errBuf, sizeof(errBuf));
 
@@ -167,6 +167,7 @@ jboolean nativeRenderPage(JNIEnv* env, jclass /*clazz*/, jlong documentPtr, jint
 #define JNI_STR(s) const_cast<char*>(s)
 
 const JNINativeMethod gMethods[] = {
+        {JNI_STR("nativeSetLimits"), JNI_STR("(JJJ)V"), reinterpret_cast<void*>(tiffrenderer::nativeSetLimits)},
         {JNI_STR("nativeOpen"), JNI_STR("(Ljava/lang/String;)J"), reinterpret_cast<void*>(nativeOpen)},
         {JNI_STR("nativeOpenBytes"), JNI_STR("([B)J"), reinterpret_cast<void*>(nativeOpenBytes)},
         {JNI_STR("nativeClose"), JNI_STR("(J)V"), reinterpret_cast<void*>(tiffrenderer::nativeClose)},

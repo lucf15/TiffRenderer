@@ -24,7 +24,5 @@ internal actual fun openFixtureSource(name: String, bytes: ByteArray): TiffSourc
     }
     fclose(file)
 
-    val fd = open(path, O_RDONLY)
-    check(fd >= 0) { "failed to open $path" }
-    return TiffSource.fromFileDescriptor(fd, bytes.size.toLong())
+    return TiffSource.fromPath(path)
 }
