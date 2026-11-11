@@ -7,6 +7,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import io.github.lucf15.tiffrenderer.sample.resources.Res
 import io.github.lucf15.tiffrenderer.sample.resources.inter_medium
 import io.github.lucf15.tiffrenderer.sample.resources.inter_regular
@@ -19,7 +21,11 @@ import io.github.lucf15.tiffrenderer.sample.shared.ui.WorkspaceScreen
 import org.jetbrains.compose.resources.Font
 
 @Composable
-fun TiffRendererApp(toolbarContainer: @Composable (@Composable () -> Unit) -> Unit = { content -> content() }) {
+fun TiffRendererApp(
+    toolbarContainer: @Composable (@Composable () -> Unit) -> Unit = { content -> content() },
+    onTitleBoundsChanged: (Rect) -> Unit = {},
+    onBackgroundChanged: (Color) -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     val controller = remember(scope) { WorkspaceController(scope) }
     val choose = rememberTiffPicker(controller::open)
@@ -32,6 +38,6 @@ fun TiffRendererApp(toolbarContainer: @Composable (@Composable () -> Unit) -> Un
             Font(Res.font.inter_semibold, FontWeight.SemiBold),
         )
     CompositionLocalProvider(LocalWorkspaceFontFamily provides font) {
-        WorkspaceScreen(controller, choose, toolbarContainer)
+        WorkspaceScreen(controller, choose, toolbarContainer, onTitleBoundsChanged, onBackgroundChanged)
     }
 }

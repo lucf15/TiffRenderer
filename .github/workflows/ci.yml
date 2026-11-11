@@ -137,6 +137,10 @@ jobs:
           java-distribution: ${{ matrix.java-distribution }}
           java-arch: ${{ matrix.java-arch }}
 
+      - name: Build desktop sample
+        if: (matrix.os == 'macos-latest' && matrix.java-arch == 'arm64') || matrix.os == 'windows-latest'
+        run: ./gradlew :sample:desktopApp:classes
+
       - name: Native safety tests with sanitizers
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1

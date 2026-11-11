@@ -27,6 +27,9 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.selected
@@ -50,6 +53,8 @@ internal fun WorkspaceScreen(
     controller: WorkspaceController,
     chooseFile: () -> Unit,
     toolbarContainer: @Composable (@Composable () -> Unit) -> Unit,
+    onTitleBoundsChanged: (Rect) -> Unit,
+    onBackgroundChanged: (Color) -> Unit,
 ) {
     val systemDark = isSystemInDarkTheme()
     var dark by remember { mutableStateOf(systemDark) }
@@ -61,6 +66,7 @@ internal fun WorkspaceScreen(
     val sidebarWidth = remember { mutableFloatStateOf(184f) }
     val windowWidth = remember { mutableIntStateOf(1280) }
     val colors = remember(dark) { WorkspaceColors(dark) }
+    LaunchedEffect(colors.background) { onBackgroundChanged(colors.background) }
     val state = controller.state
     val focus = remember { FocusRequester() }
     val density = LocalDensity.current
@@ -283,6 +289,22 @@ internal fun WorkspaceScreen(
                             RoundedCornerShape(16.dp),
                         ),
                 ) {
+                    if (nativeWindowControlsWidth > 0f) {
+                        Box(
+                            Modifier.align(Alignment.CenterStart)
+                                .padding(start = 14.dp)
+                                .width(nativeWindowControlsWidth.dp)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(50))
+                                .windowMaterial(WindowMaterial.CONTROL)
+                                .border(
+                                    0.5.dp,
+                                    if (dark) Color.White.copy(alpha = 0.16f)
+                                    else Color.Black.copy(alpha = 0.17f),
+                                    RoundedCornerShape(50),
+                                ),
+                        )
+                    }
                     toolbarContainer {
                         PreviewToolbar(
                             state,
@@ -294,6 +316,7 @@ internal fun WorkspaceScreen(
                             dark,
                             fitWidth,
                             contentStart,
+                            onTitleBoundsChanged,
                             {
                                 if (wide) sidebarVisible = !sidebarVisible
                                 else mobileSidebar = !mobileSidebar
@@ -370,6 +393,7 @@ private fun PreviewToolbar(
     dark: Boolean,
     fitWidth: Boolean,
     railWidth: State<Dp>,
+    onTitleBoundsChanged: (Rect) -> Unit,
     toggleSidebar: () -> Unit,
     toggleInfo: () -> Unit,
     toggleAppearance: () -> Unit,
@@ -380,7 +404,8 @@ private fun PreviewToolbar(
         Modifier.fillMaxWidth()
             .height(if (wide) 58.dp else 60.dp)
             .padding(
-                start = (if (wide) 14.dp else 8.dp) + nativeWindowControlsWidth.dp,
+                start = (if (wide || nativeWindowControlsWidth > 0f) 14.dp else 8.dp) + nativeWindowControlsWidth.dp +
+                    if (nativeWindowControlsWidth > 0f) (if (wide) 14.dp else 4.dp) else 0.dp,
                 end = if (wide) 14.dp else 8.dp,
             ),
         verticalAlignment = Alignment.CenterVertically,
@@ -389,43 +414,39 @@ private fun PreviewToolbar(
         Row(
             Modifier.liveWidth {
                 if (wide)
-                    (railWidth.value.value - 14 - nativeWindowControlsWidth).coerceAtLeast(36f).dp
-                else 36.dp
+                    (railWidth.value.value - 28 - nativeWindowControlsWidth).coerceAtLeast(44f).dp
+                else 44.dp
             },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+            if (state.stage != WorkspaceStage.EMPTY) ToolbarGroup {
                 WorkspaceButton(
-                    if (state.stage == WorkspaceStage.EMPTY) "Open document"
-                    else if (sidebar) "Hide thumbnails" else "Show thumbnails",
-                    if (state.stage == WorkspaceStage.EMPTY) choose else toggleSidebar,
-                    icon =
-                        if (state.stage == WorkspaceStage.EMPTY) WorkspaceIcon.Folder
-                        else WorkspaceIcon.Sidebar,
+                    if (sidebar) "Hide thumbnails" else "Show thumbnails",
+                    toggleSidebar,
+                    icon = WorkspaceIcon.Sidebar,
                 )
             }
-            if (wide && sidebar && state.stage != WorkspaceStage.EMPTY)
-                Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-                    WorkspaceButton(
-                        "Open TIFF · $primaryShortcutLabel O",
-                        choose,
-                        icon = WorkspaceIcon.Folder,
-                    )
-                }
         }
-        DocumentCaption(state, Modifier.weight(1f).padding(start = if (wide) 8.dp else 2.dp))
+        val density = LocalDensity.current.density
+        DocumentCaption(state, Modifier.weight(1f).padding(start = if (wide) 8.dp else 2.dp)
+            .onGloballyPositioned {
+                val bounds = it.boundsInWindow()
+                onTitleBoundsChanged(Rect(bounds.left / density, bounds.top / density,
+                    bounds.right / density, bounds.bottom / density))
+            })
         if (wide && state.stage == WorkspaceStage.READY) {
             ZoomTools(state, controller)
             PageTools(state, controller, fitWidth, toggleFit)
         }
         AppearanceTools(info, dark, wide, toggleInfo, toggleAppearance)
-        if (state.stage != WorkspaceStage.EMPTY && (!wide || !sidebar))
+        ToolbarGroup {
             WorkspaceButton(
                 "Open TIFF · $primaryShortcutLabel O",
                 choose,
                 icon = WorkspaceIcon.Folder,
             )
+        }
     }
 }
 
@@ -803,7 +824,9 @@ private fun Inspector(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             WorkspaceText("Information", 14, weight = FontWeight.SemiBold)
-            WorkspaceButton("Close information", onClose, icon = WorkspaceIcon.Close)
+            ToolbarGroup {
+                WorkspaceButton("Close information", onClose, icon = WorkspaceIcon.Close)
+            }
         }
         Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.line))
         Column(
@@ -841,14 +864,16 @@ private fun Inspector(
         }
         if (state.name.isNotEmpty()) {
             Box(Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) {
-                WorkspaceButton(
-                    "Close document",
-                    {
-                        controller.cancel()
-                        onClose()
-                    },
-                    text = "Close document",
-                )
+                ToolbarGroup {
+                    WorkspaceButton(
+                        "Close document",
+                        {
+                            controller.cancel()
+                            onClose()
+                        },
+                        text = "Close document",
+                    )
+                }
             }
         }
     }

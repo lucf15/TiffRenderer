@@ -17,6 +17,7 @@ Supports single-page and multipage files through libtiff, with configurable memo
 > For the previous release, see the [3.0 documentation](https://github.com/lucf15/TiffRenderer/tree/v3.0.0#readme).
 
 [Web demo](https://lucf15.github.io/TiffRenderer/) · [Get started](#get-started) · [Platforms](#platforms) · [Rendering](#rendering) · [Output size](#output-size) ·
+[Migration](#migration-to-40) ·
 [Resources and cancellation](#resources-and-cancellation) · [Limits](#limits) ·
 [Codec support](#codec-support) · [Native libraries](#native-libraries) ·
 [Sample app](#sample-app) · [Building and testing](#building-and-testing)
@@ -251,6 +252,53 @@ fun sourceFromMemory(bytes: ByteArray): TiffSource = TiffSource.fromByteArray(by
 This takes an independent snapshot. Prefer file/URI/URL/Blob input for large documents to
 avoid the extra copy. The source is reusable and has no `close()` or `release()` obligation.
 
+## Migration to 4.0
+
+Version 4.0 changes the document and page API. Update the Maven Central dependency to
+`io.github.lucf15:tiffrenderer:4.0.0`. Versions before 2.0 used the JitPack coordinate
+`com.github.lucf15:TiffRenderer`; replace that dependency rather than adding both.
+
+In 3.x, a typical render opened a page and supplied a destination bitmap:
+
+```kotlin
+// 3.x
+TiffRenderer.open(source).use { renderer ->
+    renderer.openPage(0).use { page ->
+        val bitmap = createTiffBitmap(page.width, page.height)
+        page.render(bitmap, renderMode = TiffRenderMode.FOR_DISPLAY)
+    }
+}
+```
+
+In 4.0, render directly from the document. This example returns the image and closes the
+document even if rendering fails:
+
+```kotlin
+import io.github.lucf15.tiffrenderer.RenderSize
+import io.github.lucf15.tiffrenderer.TiffBitmap
+import io.github.lucf15.tiffrenderer.TiffRenderer
+import io.github.lucf15.tiffrenderer.TiffSource
+
+suspend fun renderFirstPage(source: TiffSource): TiffBitmap =
+    TiffRenderer.withDocument(source) { document ->
+        document.renderPage(0, RenderSize.Original).image
+    }
+```
+
+| 3.x | 4.0 |
+|---|---|
+| `openPage(index)` and page `width` / `height` | `pageInfo(index)` |
+| `page.render(bitmap, clip, transform, mode)` | `document.renderInto(index, bitmap, clip, transform, sampling)` |
+| `TiffRenderMode.FOR_DISPLAY` / `FOR_PRINT` | `TiffSampling.SMOOTH` / `NEAREST` |
+| `page.retainRaster()` / `releaseRaster()` | Set `TiffOptions(cacheBytes = ...)` when opening; use `trimCache()` to release the cache |
+| Single-use `TiffSource`, with `release()` for unused sources | Reusable `TiffSource`; each open acquires its own resources |
+
+Kotlin document operations remain suspending. `renderPage` returns a `TiffRenderResult`, so
+read its `image` and inspect `warnings` when partial decoding is enabled. Strict decoding and
+memory limits are now enabled by default; see [damaged files](#damaged-files) and [limits](#limits).
+For 1.x and 2.x platform-specific APIs, consult the documentation for your installed version
+before moving to the 4.0 document API.
+
 ## Rendering
 
 | Document method | Returns | Purpose |
@@ -464,7 +512,8 @@ node --test lib/native/src/test/js/tiffcore-glue.test.mjs
 
 Browser tests require Chrome/Chromium. Android tests require a device/emulator; iOS tests require
 a compatible simulator. CI runs decode fixtures, worker lifecycle tests, native sanitizer
-checks and scheduled fuzzing. Fuzz crashes in dependencies fail the job too.
+checks and scheduled fuzzing. Fuzz reports in third-party dependencies are retained as artifacts;
+the scheduled job fails when a report implicates project code or cannot be classified.
 
 The C++ core uses libtiff, IJG libjpeg and libwebp. See [third-party licenses](THIRD_PARTY_LICENSES.md).
 
